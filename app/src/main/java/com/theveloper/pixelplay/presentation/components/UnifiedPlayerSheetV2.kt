@@ -713,6 +713,8 @@ fun UnifiedPlayerSheetV2(
 
             UnifiedPlayerQueueAndSongInfoHost(
                 shouldRenderHost = shouldRenderQueueHost,
+                keepQueueSheetWarm = currentSheetContentState == PlayerSheetState.EXPANDED &&
+                    !internalIsKeyboardVisible,
                 isQueueTelemetryActive = isQueueTelemetryActive,
                 albumColorScheme = albumColorScheme,
                 queueScrimAlpha = queueScrimAlpha,
