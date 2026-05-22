@@ -22,6 +22,7 @@ import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.google.android.gms.common.api.PendingResult
 import com.google.android.gms.common.images.WebImage
 import com.theveloper.pixelplay.data.model.Song
+import com.theveloper.pixelplay.data.service.cast.CastAudioMimeUtils
 import com.theveloper.pixelplay.data.service.http.CastSessionSecurity
 import org.json.JSONObject
 import timber.log.Timber
@@ -304,6 +305,19 @@ class CastPlayer(
                             null
                         }
 
+                        // Ogg containers are more reliable on Cast when the codec is explicit.
+                        if (rawExtractorMime == "audio/opus" || rawExtractorMime == "audio/vorbis") {
+                            val forcedMime = CastAudioMimeUtils.toCastSupportedMimeTypeOrNull(rawExtractorMime)
+                            if (forcedMime != null) {
+                                forcedMimeBySongId[song.id] = forcedMime
+                                Log.i(
+                                    "PX_CAST_QLOAD",
+                                    "ogg_codec_probe songId=${song.id} rawCodec=$rawExtractorMime forcedMime=$forcedMime nonce=$queueLoadNonce"
+                                )
+                            }
+                            continue
+                        }
+
                         // Only override the MIME when the server will transcode (ALAC or FLAC → AAC ADTS).
                         if (rawExtractorMime == "audio/alac") {
                             val alacDecoderAvailable = isAlacTranscodeSupported()
@@ -544,16 +558,36 @@ class CastPlayer(
             "aac" -> "audio/aac"
             "m4a", "m4b", "m4p", "mp4", "3gp", "3gpp", "3ga" -> "audio/mp4"
             "wav" -> "audio/wav"
-            "ogg", "oga" -> "audio/ogg"
-            "opus" -> "audio/ogg"
+            "ogg", "oga" -> CastAudioMimeUtils.AUDIO_OGG
+            "opus" -> CastAudioMimeUtils.AUDIO_OGG_OPUS
             "weba", "webm" -> "audio/webm"
             "amr" -> "audio/amr"
             else -> null
         }
 
-        val normalizedCandidate = listOfNotNull(metadataMimeType, resolverMimeType, extensionMimeType)
+        val rawMimeCandidates = listOf(metadataMimeType, resolverMimeType, extensionMimeType)
+        val normalizedCandidate = rawMimeCandidates
+            .filterNotNull()
             .firstNotNullOfOrNull { candidate -> candidate.toCastSupportedMimeTypeOrNull() }
             ?: "audio/mpeg"
+
+        if (CastAudioMimeUtils.baseMimeType(normalizedCandidate) == CastAudioMimeUtils.AUDIO_OGG) {
+            val metadataOggContentType = CastAudioMimeUtils.resolveOggContentType(
+                rawMimeCandidates = rawMimeCandidates,
+                extension = extension,
+                headerBytes = null
+            )
+            if (metadataOggContentType != null &&
+                CastAudioMimeUtils.isExactOggContentType(metadataOggContentType)
+            ) {
+                return metadataOggContentType
+            }
+            return CastAudioMimeUtils.resolveOggContentType(
+                rawMimeCandidates = rawMimeCandidates,
+                extension = extension,
+                headerBytes = readAudioSignature(this)
+            ) ?: metadataOggContentType ?: normalizedCandidate
+        }
 
         // Container formats from metadata are reliable. Signature detection (framed sync-word scan)
         // can produce false positives on container binary data (e.g. 0xFF bytes inside MP4 moov atom).
@@ -582,59 +616,40 @@ class CastPlayer(
     }
 
     private fun String.toCastSupportedMimeTypeOrNull(): String? {
-        val normalized = this.trim().substringBefore(';').lowercase(Locale.ROOT)
-        return when (normalized) {
-            "audio/mpeg",
-            "audio/mp3",
-            "audio/mpeg3",
-            "audio/x-mpeg" -> "audio/mpeg"
-
-            "audio/flac",
-            "audio/x-flac" -> "audio/flac"
-
-            "audio/aac",
-            "audio/aacp",
-            "audio/adts",
-            "audio/vnd.dlna.adts",
-            "audio/mp4a-latm",
-            "audio/aac-latm",
-            "audio/x-aac",
-            "audio/x-hx-aac-adts",
-            // ALAC codec in M4A container: server transcodes to AAC ADTS, so announce as audio/aac
-            "audio/alac" -> "audio/aac"
-
-            "audio/mp4",
-            "audio/x-m4a",
-            "audio/m4a",
-            "audio/3gpp",
-            "audio/3gp" -> "audio/mp4"
-
-            "audio/wav",
-            "audio/x-wav",
-            "audio/wave" -> "audio/wav"
-
-            "audio/ogg",
-            "audio/oga",
-            "audio/opus",
-            "application/ogg" -> "audio/ogg"
-
-            "audio/webm" -> "audio/webm"
-
-            "audio/amr",
-            "audio/amr-wb",
-            "audio/l16",
-            "audio/l24" -> normalized
-
-            // AIFF is not natively supported by Cast. Map to audio/mpeg as best-effort fallback.
-            "audio/aiff",
-            "audio/x-aiff",
-            "audio/aif" -> "audio/mpeg"
-
-            else -> null
-        }
+        return CastAudioMimeUtils.toCastSupportedMimeTypeOrNull(this)
     }
 
-    fun seek(position: Long) {
+    fun canSeekCurrentItem(): Boolean {
+        val status = remoteMediaClient?.mediaStatus ?: return true
+        val currentItemId = status.currentItemId
+        val currentItem = status.getQueueItemById(currentItemId)
+        val mediaContentType = currentItem?.media?.contentType
+        val customMimeType = currentItem
+            ?.customData
+            ?.optString("mimeType")
+            ?.takeIf { it.isNotBlank() }
+
+        return !CastAudioMimeUtils.isCastSeekUnstableContentType(mediaContentType) &&
+            !CastAudioMimeUtils.isCastSeekUnstableContentType(customMimeType)
+    }
+
+    fun seek(position: Long): Boolean {
+        if (!canSeekCurrentItem()) {
+            pendingSeekPositionMs = null
+            seekDispatchRunnable?.let { commandHandler.removeCallbacks(it) }
+            seekDispatchRunnable = null
+            val status = remoteMediaClient?.mediaStatus
+            val currentItem = status?.getQueueItemById(status.currentItemId)
+            Timber.tag(castLogTag).w(
+                "Blocked Cast seek for unstable Ogg stream. itemId=%s contentType=%s customMime=%s",
+                status?.currentItemId,
+                currentItem?.media?.contentType,
+                currentItem?.customData?.optString("mimeType")
+            )
+            remoteMediaClient?.requestStatus()
+            return false
+        }
+
         val targetPosition = position.coerceAtLeast(0L)
         pendingSeekPositionMs = targetPosition
         seekDispatchRunnable?.let { commandHandler.removeCallbacks(it) }
@@ -654,6 +669,7 @@ class CastPlayer(
         }
         seekDispatchRunnable = runnable
         commandHandler.postDelayed(runnable, seekDebounceMs)
+        return true
     }
 
     fun play() {
@@ -1049,7 +1065,7 @@ class CastPlayer(
                 // the container-level resolution only for diagnostic display.
                 val sentMime = forcedMimeBySongId[song.id] ?: song.resolveCastContentType()
                 val streamRevision = song.buildCastStreamRevision(sentMime, queueLoadNonce)
-                val likelySupported = sentMime in setOf(
+                val likelySupported = CastAudioMimeUtils.baseMimeType(sentMime) in setOf(
                     "audio/mpeg",
                     "audio/aac",
                     "audio/mp4",

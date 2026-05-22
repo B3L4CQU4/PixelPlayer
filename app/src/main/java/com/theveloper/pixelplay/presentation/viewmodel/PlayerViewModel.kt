@@ -68,6 +68,7 @@ import com.theveloper.pixelplay.data.repository.LyricsSearchResult
 import com.theveloper.pixelplay.data.repository.MusicRepository
 import com.theveloper.pixelplay.data.service.MusicNotificationProvider
 import com.theveloper.pixelplay.data.service.MusicService
+import com.theveloper.pixelplay.data.service.cast.CastRemotePlaybackState
 import com.theveloper.pixelplay.data.service.player.CastPlayer
 import com.theveloper.pixelplay.data.service.http.MediaFileHttpServerService
 import com.theveloper.pixelplay.data.service.player.DualPlayerEngine
@@ -966,7 +967,12 @@ class PlayerViewModel @Inject constructor(
         listeningStatsTracker.initialize(viewModelScope)
         dailyMixStateHolder.initialize(viewModelScope)
         lyricsStateHolder.initialize(viewModelScope, lyricsLoadCallback, playbackStateHolder.stablePlayerState)
-        playbackStateHolder.initialize(viewModelScope)
+        playbackStateHolder.initialize(
+            coroutineScope = viewModelScope,
+            onCastSeekBlocked = {
+                sendToast(context.getString(R.string.cast_seek_unavailable_for_format))
+            }
+        )
         themeStateHolder.initialize(viewModelScope)
 
         // On cold start, the MediaController connects asynchronously, leaving stablePlayerState.currentSong
@@ -4214,12 +4220,19 @@ class PlayerViewModel @Inject constructor(
         val castSession = castStateHolder.castSession.value
         if (castSession != null && castSession.remoteMediaClient != null) {
             val remoteMediaClient = castSession.remoteMediaClient!!
-            if (remoteMediaClient.isPlaying) {
+            val remotePlayback = remoteMediaClient.mediaStatus?.let { mediaStatus ->
+                CastRemotePlaybackState.project(
+                    mediaStatus = mediaStatus,
+                    previousPlayIntent = playbackStateHolder.stablePlayerState.value.playWhenReady
+                )
+            }
+            if (remoteMediaClient.isPlaying || remotePlayback?.playWhenReady == true) {
                 castStateHolder.castPlayer?.pause()
                 playbackStateHolder.updateStablePlayerState {
                     it.copy(
                         isPlaying = false,
-                        playWhenReady = false
+                        playWhenReady = false,
+                        isBuffering = false
                     )
                 }
             } else {

@@ -31,6 +31,7 @@ import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.data.model.Song
 import com.theveloper.pixelplay.data.repository.MusicRepository
+import com.theveloper.pixelplay.data.service.cast.CastAudioMimeUtils
 import com.theveloper.pixelplay.utils.AlbumArtUtils
 import dagger.hilt.android.AndroidEntryPoint
 import io.ktor.http.ContentType
@@ -989,39 +990,39 @@ class MediaFileHttpServerService : Service() {
     private suspend fun ApplicationCall.ensureAuthorizedCastMediaRequest(songId: String): Boolean {
         val remoteAddress = request.origin.remoteHost
         val policy = currentCastAccessPolicy()
+        val providedToken = request.queryParameters[CastSessionSecurity.AUTH_QUERY_PARAMETER]
 
-        if (!CastSessionSecurity.isAuthorizedClientAddress(remoteAddress, policy)) {
+        // Cast receivers can fetch byte ranges through alternate LAN endpoints during seek.
+        // The per-session token and song allowlist are the stable authorization boundary.
+        if (CastSessionSecurity.isAuthorizedSongRequest(providedToken, songId, policy)) {
+            if (!CastSessionSecurity.isAuthorizedClientAddress(remoteAddress, policy)) {
+                Timber.tag(castHttpLogTag).i(
+                    "Accepted Cast media request from non-hinted client with valid token client=%s songId=%s",
+                    remoteAddress,
+                    songId
+                )
+            }
+            return true
+        }
+
+        val hasValidToken = !policy.authToken.isNullOrBlank() && providedToken == policy.authToken
+        if (!hasValidToken) {
             Timber.tag(castHttpLogTag).w(
-                "Rejected Cast media request from unauthorized client=%s songId=%s",
+                "Rejected Cast media request with invalid token client=%s songId=%s",
                 remoteAddress,
                 songId
             )
-            respond(HttpStatusCode.Forbidden, "Forbidden")
-            return false
+            respond(HttpStatusCode.Unauthorized, "Unauthorized")
+        } else {
+            Timber.tag(castHttpLogTag).w(
+                "Rejected Cast media request for non-whitelisted song client=%s songId=%s",
+                remoteAddress,
+                songId
+            )
+            respond(HttpStatusCode.NotFound, "Song not found")
         }
 
-        val providedToken = request.queryParameters[CastSessionSecurity.AUTH_QUERY_PARAMETER]
-        if (!CastSessionSecurity.isAuthorizedSongRequest(providedToken, songId, policy)) {
-            val hasValidToken = !policy.authToken.isNullOrBlank() && providedToken == policy.authToken
-            if (!hasValidToken) {
-                Timber.tag(castHttpLogTag).w(
-                    "Rejected Cast media request with invalid token client=%s songId=%s",
-                    remoteAddress,
-                    songId
-                )
-                respond(HttpStatusCode.Unauthorized, "Unauthorized")
-            } else {
-                Timber.tag(castHttpLogTag).w(
-                    "Rejected Cast media request for non-whitelisted song client=%s songId=%s",
-                    remoteAddress,
-                    songId
-                )
-                respond(HttpStatusCode.NotFound, "Song not found")
-            }
-            return false
-        }
-
-        return true
+        return false
     }
 
     private fun resolveAudioStreamSource(song: Song, uri: Uri): AudioStreamSource? {
@@ -1379,6 +1380,27 @@ class MediaFileHttpServerService : Service() {
         // with signature detection, which can produce false positives (e.g. 0xFF sync words inside
         // an MP4 moov atom are misread as AAC/MPEG framing). Only use signature to upgrade truly
         // ambiguous metadata types (audio/mpeg, audio/aac) or when metadata is absent.
+        // Ogg is a container; Cast behaves better when Opus/Vorbis is declared explicitly.
+        if (CastAudioMimeUtils.baseMimeType(normalizedFallback) == CastAudioMimeUtils.AUDIO_OGG) {
+            val extension = song.path.substringAfterLast('.', "")
+            val rawCandidates = listOf(song.mimeType, providerMimeType, resolveAudioMimeTypeFromPath(song.path))
+            val metadataOggContentType = CastAudioMimeUtils.resolveOggContentType(
+                rawMimeCandidates = rawCandidates,
+                extension = extension,
+                headerBytes = null
+            )
+            if (metadataOggContentType != null &&
+                CastAudioMimeUtils.isExactOggContentType(metadataOggContentType)
+            ) {
+                return metadataOggContentType
+            }
+            return CastAudioMimeUtils.resolveOggContentType(
+                rawMimeCandidates = rawCandidates,
+                extension = extension,
+                headerBytes = readAudioSignature(song = song, uri = uri)
+            ) ?: metadataOggContentType ?: normalizedFallback
+        }
+
         val isContainerFormat = normalizedFallback != null &&
             normalizedFallback != "audio/mpeg" &&
             normalizedFallback != "audio/aac"
@@ -1409,59 +1431,7 @@ class MediaFileHttpServerService : Service() {
     }
 
     private fun normalizeCastAudioMimeType(rawMimeType: String): String? {
-        val normalized = rawMimeType
-            .trim()
-            .substringBefore(';')
-            .lowercase(Locale.ROOT)
-        return when (normalized) {
-            "audio/mpeg",
-            "audio/mp3",
-            "audio/mpeg3",
-            "audio/x-mpeg" -> "audio/mpeg"
-
-            "audio/flac",
-            "audio/x-flac" -> "audio/flac"
-
-            "audio/aac",
-            "audio/aacp",
-            "audio/adts",
-            "audio/vnd.dlna.adts",
-            "audio/mp4a-latm",
-            "audio/aac-latm",
-            "audio/x-aac",
-            "audio/x-hx-aac-adts",
-            // ALAC codec in M4A: server transcodes to AAC ADTS, normalize as audio/aac
-            "audio/alac" -> "audio/aac"
-
-            "audio/mp4",
-            "audio/x-m4a",
-            "audio/m4a",
-            "audio/3gpp",
-            "audio/3gp" -> "audio/mp4"
-
-            "audio/wav",
-            "audio/x-wav",
-            "audio/wave" -> "audio/wav"
-
-            "audio/ogg",
-            "audio/oga",
-            "audio/opus",
-            "application/ogg" -> "audio/ogg"
-
-            "audio/webm" -> "audio/webm"
-
-            "audio/amr",
-            "audio/amr-wb",
-            "audio/l16",
-            "audio/l24" -> normalized
-
-            // AIFF is not natively supported by Cast. Map to audio/mpeg as best-effort fallback.
-            "audio/aiff",
-            "audio/x-aiff",
-            "audio/aif" -> "audio/mpeg"
-
-            else -> null
-        }
+        return CastAudioMimeUtils.toCastSupportedMimeTypeOrNull(rawMimeType)
     }
 
     private fun detectAudioMimeTypeBySignature(song: Song, uri: Uri): String? {
@@ -1625,7 +1595,8 @@ class MediaFileHttpServerService : Service() {
             "m4a", "m4b", "m4p", "mp4", "3gp", "3gpp", "3ga" -> "audio/mp4"
             "wav" -> "audio/wav"
             "aif", "aiff", "aifc" -> "audio/aiff"
-            "ogg", "oga", "opus" -> "audio/ogg"
+            "ogg", "oga" -> CastAudioMimeUtils.AUDIO_OGG
+            "opus" -> CastAudioMimeUtils.AUDIO_OGG_OPUS
             "weba" -> "audio/webm"
             "wma" -> "audio/x-ms-wma"
             else -> null
