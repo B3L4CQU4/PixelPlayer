@@ -112,12 +112,12 @@ internal fun rememberSheetVisualState(
         {
             val collapsedCornerTarget = if (roundCollapsedMiniPlayer) {
                 collapsedMiniPlayerCornerRadius
+            } else if (isNavBarHidden) {
+                32.dp
             } else if (navBarStyle == NavBarStyle.DEFAULT) {
                 navBarCornerRadiusDp
             } else if (navBarStyle == NavBarStyle.FULL_WIDTH) {
                 32.dp
-            } else if (isNavBarHidden) {
-                60.dp
             } else {
                 navBarCornerRadiusDp
             }
@@ -138,19 +138,7 @@ internal fun rememberSheetVisualState(
                 }
             }
 
-            if (navBarStyle == NavBarStyle.DEFAULT) {
-                if (currentSheetContentState == PlayerSheetState.COLLAPSED &&
-                    swipeDismissProgress > 0f &&
-                    showPlayerContentArea &&
-                    playerContentExpansionFraction.value < 0.01f
-                ) {
-                    lerp(navBarCornerRadiusDp, 10.dp, swipeDismissProgress)
-                } else {
-                    calculatedNormally
-                }
-            } else {
-                calculatedNormally
-            }
+            calculatedNormally
         }
     }
 
@@ -176,12 +164,12 @@ internal fun rememberSheetVisualState(
         {
             val collapsedRadius = if (roundCollapsedMiniPlayer) {
                 collapsedMiniPlayerCornerRadius
+            } else if (isNavBarHidden) {
+                32.dp
             } else if (navBarStyle == NavBarStyle.DEFAULT) {
                 10.dp
             } else if (navBarStyle == NavBarStyle.FULL_WIDTH) {
                 32.dp
-            } else if (isNavBarHidden) {
-                60.dp
             } else {
                 navBarCornerRadiusDp
             }
@@ -205,17 +193,19 @@ internal fun rememberSheetVisualState(
                     }
                 }
 
-            if (navBarStyle == NavBarStyle.DEFAULT) {
-                calculatedNormally
-            } else if (navBarStyle == NavBarStyle.FULL_WIDTH) {
+            if (isNavBarHidden) {
                 calculatedNormally
             } else if (currentSheetContentState == PlayerSheetState.COLLAPSED &&
                 swipeDismissProgress > 0f &&
                 showPlayerContentArea &&
                 playerContentExpansionFraction.value < 0.01f
             ) {
-                val baseCollapsedRadius = if (isNavBarHidden) 32.dp else navBarCornerRadiusDp
-                lerp(baseCollapsedRadius, navBarCornerRadiusDp, swipeDismissProgress)
+                if (navBarStyle == NavBarStyle.DEFAULT) {
+                    lerp(10.dp, navBarCornerRadiusDp, swipeDismissProgress)
+                } else {
+                    val baseCollapsedRadius = if (isNavBarHidden) 32.dp else navBarCornerRadiusDp
+                    lerp(baseCollapsedRadius, navBarCornerRadiusDp, swipeDismissProgress)
+                }
             } else {
                 calculatedNormally
             }
