@@ -12,6 +12,7 @@
 <p align="center">
   <img src="assets/Screenshot_1.png" alt="Screenshot 1" width="200" style="border-radius:26px;"/>
   <img src="assets/Screenshot_2.png" alt="Screenshot 2" width="200" style="border-radius:26px;"/>
+  <img src="assets/Screenshot_8.png" alt="Screenshot 3" width="200" style="border-radius:26px;"/>
   <img src="assets/Screenshot_37.png" alt="Screenshot 3" width="200" style="border-radius:26px;"/>
   <img src="assets/Screenshot_4.png" alt="Screenshot 4" width="200" style="border-radius:26px;"/>
   <img src="assets/Screenshot_5.png" alt="Screenshot 5" width="200" style="border-radius:26px;"/>
