@@ -50,7 +50,7 @@ This fork adds a set of interface optimizations for the Anbernic RG Rotate.
 - Compact fullscreen player controls designed for limited vertical space.
 - Optimized lyrics screen layout for the RG Rotate screen.
 
-### Compact Bottom Chrome
+### Compact Bottom bar
 
 - Navigation bar and mini player share one bottom row.
 - Collapsed navigation bar shows only the active section icon.
