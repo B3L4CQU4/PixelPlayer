@@ -62,6 +62,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.ExperimentalTextApi
@@ -101,6 +102,7 @@ import com.theveloper.pixelplay.presentation.components.RecentlyPlayedSectionMin
 import com.theveloper.pixelplay.presentation.components.SmartImage
 import com.theveloper.pixelplay.presentation.components.StatsOverviewCard
 import com.theveloper.pixelplay.presentation.components.resolveMainScreenBottomGradientHeight
+import com.theveloper.pixelplay.presentation.components.shouldUseOneByOneOptimisation
 import com.theveloper.pixelplay.presentation.model.collectRecentlyPlayedSongIds
 import com.theveloper.pixelplay.presentation.model.mapRecentlyPlayedSongs
 import com.theveloper.pixelplay.presentation.components.subcomps.PlayingEqIcon
@@ -245,7 +247,17 @@ fun HomeScreen(
     // Padding inferior si hay canción en reproducción
     val bottomPadding = if (currentSong != null) MiniPlayerHeight else 0.dp
     val navBarCompactMode by playerViewModel.navBarCompactMode.collectAsStateWithLifecycle()
-    val bottomGradientHeight = resolveMainScreenBottomGradientHeight(navBarCompactMode)
+    val oneByOneOptimisation by playerViewModel.oneByOneOptimisation.collectAsStateWithLifecycle()
+    val configuration = LocalConfiguration.current
+    val useOneByOneOptimisation = shouldUseOneByOneOptimisation(
+        enabled = oneByOneOptimisation,
+        screenWidthDp = configuration.screenWidthDp,
+        screenHeightDp = configuration.screenHeightDp
+    )
+    val bottomGradientHeight = resolveMainScreenBottomGradientHeight(
+        compactMode = navBarCompactMode,
+        oneByOneOptimisationActive = useOneByOneOptimisation
+    )
 
     var showOptionsBottomSheet by remember { mutableStateOf(false) }
     var showChangelogBottomSheet by remember { mutableStateOf(false) }

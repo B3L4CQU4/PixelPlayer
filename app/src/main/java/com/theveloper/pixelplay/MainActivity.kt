@@ -30,6 +30,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -52,6 +53,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -78,6 +80,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -127,6 +130,7 @@ import com.theveloper.pixelplay.presentation.components.calculatePlayerSheetColl
 import com.theveloper.pixelplay.presentation.components.resolveNavBarOccupiedHeight
 import com.theveloper.pixelplay.presentation.components.resolveNavBarSurfaceHeight
 import com.theveloper.pixelplay.presentation.components.sanitizeNavigationBarBottomInset
+import com.theveloper.pixelplay.presentation.components.shouldUseOneByOneOptimisation
 import com.theveloper.pixelplay.presentation.navigation.AppNavigation
 import com.theveloper.pixelplay.presentation.navigation.Screen
 import com.theveloper.pixelplay.presentation.screens.SetupScreen
@@ -657,6 +661,7 @@ class MainActivity : ComponentActivity() {
 
         val navBarStyle by playerViewModel.navBarStyle.collectAsStateWithLifecycle()
         val navBarCompactMode by playerViewModel.navBarCompactMode.collectAsStateWithLifecycle()
+        val oneByOneOptimisation by playerViewModel.oneByOneOptimisation.collectAsStateWithLifecycle()
         val navBarCornerRadiusRaw by playerViewModel.navBarCornerRadius.collectAsStateWithLifecycle()
         val navBarCornerRadius = sanitizeNavBarCornerRadius(navBarCornerRadiusRaw)
         val hapticsEnabled by playerViewModel.hapticsEnabled.collectAsStateWithLifecycle()
@@ -672,10 +677,36 @@ class MainActivity : ComponentActivity() {
         val systemNavBarInset = sanitizeNavigationBarBottomInset(
             WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         )
+        val configuration = LocalConfiguration.current
+        val screenWidth = configuration.screenWidthDp.dp
+        val oneByOneBottomControlsAvailable = shouldUseOneByOneOptimisation(
+            enabled = oneByOneOptimisation,
+            screenWidthDp = configuration.screenWidthDp,
+            screenHeightDp = configuration.screenHeightDp
+        )
+        val useOneByOneBottomControls = oneByOneBottomControlsAvailable && !shouldHideNavigationBar
+        var isOneByOneNavExpanded by remember { mutableStateOf(false) }
+        val bottomNavigationRoutes = remember(commonNavItems) {
+            commonNavItems.map { item -> item.screen.route }.toSet()
+        }
+        var lastOneByOneBottomRoute by remember { mutableStateOf(Screen.Home.route) }
 
         LaunchedEffect(hapticsEnabled, rootView) {
             rootView.isHapticFeedbackEnabled = hapticsEnabled
             rootView.rootView?.isHapticFeedbackEnabled = hapticsEnabled
+        }
+
+        LaunchedEffect(currentRoute, oneByOneBottomControlsAvailable) {
+            val route = currentRoute
+            if (oneByOneBottomControlsAvailable && route != null && route in bottomNavigationRoutes) {
+                lastOneByOneBottomRoute = route
+            }
+        }
+
+        LaunchedEffect(useOneByOneBottomControls, shouldHideNavigationBar) {
+            if (!useOneByOneBottomControls || shouldHideNavigationBar) {
+                isOneByOneNavExpanded = false
+            }
         }
 
         val horizontalPadding = if (navBarStyle == NavBarStyle.DEFAULT) {
@@ -683,16 +714,23 @@ class MainActivity : ComponentActivity() {
         } else {
             0.dp
         }
-        val animatedBottomBarPadding by animateDpAsState(
-            targetValue = if (navBarStyle == NavBarStyle.FULL_WIDTH) 0.dp else systemNavBarInset,
-            animationSpec = tween(400),
-            label = "BottomBarPadding"
+        val oneByOneBottomChromeCornerRadius = navBarCornerRadius.dp
+        val oneByOneBottomOuterPadding = if (systemNavBarInset > 30.dp) 14.dp else 12.dp
+        val oneByOneBottomGap = 8.dp
+        val oneByOneAvailableWidth = (screenWidth - oneByOneBottomOuterPadding * 2f).coerceAtLeast(MiniPlayerHeight)
+        val oneByOneCollapsedNavWidth = 84.dp
+        val oneByOneExpandedNavWidth =
+            (oneByOneAvailableWidth - MiniPlayerHeight - oneByOneBottomGap)
+                .coerceAtLeast(oneByOneCollapsedNavWidth)
+        val oneByOneNavWidth by animateDpAsState(
+            targetValue = if (isOneByOneNavExpanded) oneByOneExpandedNavWidth else oneByOneCollapsedNavWidth,
+            animationSpec = if (isOneByOneNavExpanded) {
+                tween(durationMillis = 260, easing = LinearOutSlowInEasing)
+            } else {
+                snap()
+            },
+            label = "OneByOneNavWidth"
         )
-        val bottomBarPadding = animatedBottomBarPadding
-        val navBarHeight = resolveNavBarSurfaceHeight(navBarStyle, systemNavBarInset, navBarCompactMode)
-        val navBarOccupiedHeight by remember(systemNavBarInset, navBarCompactMode) {
-            derivedStateOf { resolveNavBarOccupiedHeight(systemNavBarInset, navBarCompactMode) }
-        }
         val navBarVisibilityProgress by animateFloatAsState(
             targetValue = if (shouldHideNavigationBar) 0f else 1f,
             animationSpec = tween(
@@ -701,12 +739,58 @@ class MainActivity : ComponentActivity() {
             ),
             label = "NavBarVisibilityProgress"
         )
+        val navBarLayoutUsesOneByOne by remember(
+            oneByOneBottomControlsAvailable,
+            shouldHideNavigationBar,
+            navBarVisibilityProgress
+        ) {
+            derivedStateOf {
+                oneByOneBottomControlsAvailable &&
+                    (!shouldHideNavigationBar || navBarVisibilityProgress > 0.01f)
+            }
+        }
+        val bottomBarRoute = if (
+            navBarLayoutUsesOneByOne &&
+            currentRoute?.let { route -> route !in bottomNavigationRoutes } != false
+        ) {
+            lastOneByOneBottomRoute
+        } else {
+            currentRoute
+        }
+        val animatedBottomBarPadding by animateDpAsState(
+            targetValue = if (navBarLayoutUsesOneByOne) {
+                systemNavBarInset
+            } else if (navBarStyle == NavBarStyle.FULL_WIDTH) {
+                0.dp
+            } else {
+                systemNavBarInset
+            },
+            animationSpec = tween(400),
+            label = "BottomBarPadding"
+        )
+        val bottomBarPadding = animatedBottomBarPadding
+        val navBarHeight = if (navBarLayoutUsesOneByOne) {
+            MiniPlayerHeight
+        } else {
+            resolveNavBarSurfaceHeight(navBarStyle, systemNavBarInset, navBarCompactMode)
+        }
+        val navBarOccupiedHeight by remember(systemNavBarInset, navBarCompactMode, navBarLayoutUsesOneByOne) {
+            derivedStateOf {
+                if (navBarLayoutUsesOneByOne) {
+                    MiniPlayerHeight + systemNavBarInset
+                } else {
+                    resolveNavBarOccupiedHeight(systemNavBarInset, navBarCompactMode)
+                }
+            }
+        }
         val visibleNavBarOccupiedHeight by remember(navBarOccupiedHeight, navBarVisibilityProgress) {
             derivedStateOf { navBarOccupiedHeight * navBarVisibilityProgress }
         }
-        val miniPlayerBottomMargin by remember(systemNavBarInset, visibleNavBarOccupiedHeight) {
+        val miniPlayerBottomMargin by remember(systemNavBarInset, visibleNavBarOccupiedHeight, navBarLayoutUsesOneByOne) {
             derivedStateOf {
-                if (visibleNavBarOccupiedHeight > systemNavBarInset) {
+                if (navBarLayoutUsesOneByOne) {
+                    systemNavBarInset
+                } else if (visibleNavBarOccupiedHeight > systemNavBarInset) {
                     visibleNavBarOccupiedHeight
                 } else {
                     systemNavBarInset
@@ -799,11 +883,13 @@ class MainActivity : ComponentActivity() {
                             label = "NavBarCornerRadius"
                         )
 
-                        val actualShape = remember(navBarStyle, showPlayerContentArea, navBarCornerRadius, animatedNavBarCornerRadius) {
+                        val actualShape = remember(navBarStyle, showPlayerContentArea, navBarCornerRadius, animatedNavBarCornerRadius, navBarLayoutUsesOneByOne) {
                             DynamicSmoothCornerShape(
                                 topRadiusProvider = {
                                     val fraction = playerViewModel.playerContentExpansionFraction.value
-                                    if (navBarStyle == NavBarStyle.DEFAULT) {
+                                    if (navBarLayoutUsesOneByOne) {
+                                        oneByOneBottomChromeCornerRadius
+                                    } else if (navBarStyle == NavBarStyle.DEFAULT) {
                                         10.dp
                                     } else if (navBarStyle == NavBarStyle.FULL_WIDTH) {
                                         lerp(navBarCornerRadius.dp, 26.dp, fraction)
@@ -818,7 +904,9 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 bottomRadiusProvider = {
-                                    if (navBarStyle == NavBarStyle.DEFAULT) {
+                                    if (navBarLayoutUsesOneByOne) {
+                                        oneByOneBottomChromeCornerRadius
+                                    } else if (navBarStyle == NavBarStyle.DEFAULT) {
                                         animatedNavBarCornerRadius
                                     } else if (navBarStyle == NavBarStyle.FULL_WIDTH) {
                                         0.dp
@@ -850,8 +938,18 @@ class MainActivity : ComponentActivity() {
 
                             Surface(
                                 modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
+                                    .then(
+                                        if (navBarLayoutUsesOneByOne) {
+                                            Modifier
+                                                .align(Alignment.BottomStart)
+                                                .padding(start = oneByOneBottomOuterPadding)
+                                                .width(oneByOneNavWidth)
+                                        } else {
+                                            Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .fillMaxWidth()
+                                        }
+                                    )
                                     .padding(bottom = bottomBarPadding)
                                     .onSizeChanged { componentHeightPx = it.height }
                                     .graphicsLayer {
@@ -864,7 +962,7 @@ class MainActivity : ComponentActivity() {
                                         alpha = 1f
                                     }
                                     .height(navBarHeight)
-                                    .padding(horizontal = horizontalPadding),
+                                    .padding(horizontal = if (navBarLayoutUsesOneByOne) 0.dp else horizontalPadding),
                                 color = NavigationBarDefaults.containerColor,
                                 shape = actualShape,
                                 shadowElevation = navBarElevation
@@ -872,11 +970,15 @@ class MainActivity : ComponentActivity() {
                                 PlayerInternalNavigationBar(
                                     navController = navController,
                                     navItems = commonNavItems,
-                                    currentRoute = currentRoute,
+                                    currentRoute = bottomBarRoute,
                                     navBarStyle = navBarStyle,
-                                    compactMode = navBarCompactMode,
+                                    compactMode = if (navBarLayoutUsesOneByOne) true else navBarCompactMode,
                                     bottomBarPadding = bottomBarPadding,
                                     onSearchIconDoubleTap = onSearchIconDoubleTap,
+                                    oneByOneMode = navBarLayoutUsesOneByOne,
+                                    oneByOneExpanded = isOneByOneNavExpanded,
+                                    onOneByOneCollapsedClick = { isOneByOneNavExpanded = true },
+                                    onOneByOneItemSelected = { isOneByOneNavExpanded = false },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
@@ -906,7 +1008,9 @@ class MainActivity : ComponentActivity() {
 
                         val bottomMargin = miniPlayerBottomMargin
 
-                        val spacerPx = with(density) { MiniPlayerBottomSpacer.toPx() }
+                        val spacerPx = with(density) {
+                            (if (navBarLayoutUsesOneByOne) 0.dp else MiniPlayerBottomSpacer).toPx()
+                        }
                         val bottomMarginPx = with(density) { bottomMargin.toPx() }
                         val sheetCollapsedTargetY = calculatePlayerSheetCollapsedTargetY(
                             containerHeightPx = screenHeightPx,
@@ -979,10 +1083,23 @@ class MainActivity : ComponentActivity() {
                             playerViewModel = playerViewModel,
                             sheetCollapsedTargetY = sheetCollapsedTargetY,
                             collapsedStateHorizontalPadding = horizontalPadding,
+                            collapsedStateHorizontalPaddingStart = if (navBarLayoutUsesOneByOne) {
+                                oneByOneBottomOuterPadding + oneByOneNavWidth + oneByOneBottomGap
+                            } else {
+                                horizontalPadding
+                            },
+                            collapsedStateHorizontalPaddingEnd = if (navBarLayoutUsesOneByOne) {
+                                oneByOneBottomOuterPadding
+                            } else {
+                                horizontalPadding
+                            },
                             hideMiniPlayer = shouldHideMiniPlayer,
                             containerHeight = containerHeight,
                             navController = navController,
-                            isNavBarHidden = isNavBarEffectivelyHidden
+                            isNavBarHidden = isNavBarEffectivelyHidden,
+                            miniPlayerArtOnly = navBarLayoutUsesOneByOne && isOneByOneNavExpanded,
+                            roundCollapsedMiniPlayer = oneByOneBottomControlsAvailable,
+                            collapsedMiniPlayerCornerRadius = oneByOneBottomChromeCornerRadius
                         )
 
                         val dismissUndoBarSlice by remember {
@@ -1001,21 +1118,37 @@ class MainActivity : ComponentActivity() {
                         val onCloseDismissUndoBar = remember(playerViewModel) {
                             { playerViewModel.hideDismissUndoBar() }
                         }
+                        LaunchedEffect(dismissUndoBarSlice.isVisible, navBarLayoutUsesOneByOne) {
+                            if (dismissUndoBarSlice.isVisible && navBarLayoutUsesOneByOne) {
+                                isOneByOneNavExpanded = false
+                            }
+                        }
+                        val dismissUndoBarModifier = if (navBarLayoutUsesOneByOne) {
+                            Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(
+                                    start = oneByOneBottomOuterPadding + oneByOneNavWidth + oneByOneBottomGap,
+                                    end = oneByOneBottomOuterPadding,
+                                    bottom = systemNavBarInset
+                                )
+                        } else {
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = innerPadding.calculateBottomPadding() + MiniPlayerBottomSpacer)
+                                .padding(horizontal = horizontalPadding)
+                        }
 
                         AnimatedVisibility(
                             visible = dismissUndoBarSlice.isVisible,
                             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                             exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = innerPadding.calculateBottomPadding() + MiniPlayerBottomSpacer)
-                                .padding(horizontal = horizontalPadding)
+                            modifier = dismissUndoBarModifier
                         ) {
                             DismissUndoBar(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(MiniPlayerHeight)
-                                    .padding(horizontal = 14.dp),
+                                    .padding(horizontal = if (navBarLayoutUsesOneByOne) 0.dp else 14.dp),
                                 onUndo = onUndoDismissPlaylist,
                                 onClose = onCloseDismissUndoBar,
                                 durationMillis = dismissUndoBarSlice.durationMillis

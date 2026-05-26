@@ -92,6 +92,7 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
@@ -112,7 +113,8 @@ import com.theveloper.pixelplay.presentation.components.SongPickerBottomSheet
 import com.theveloper.pixelplay.presentation.components.ExpressiveScrollBar
 import com.theveloper.pixelplay.presentation.components.SmartImage
 import com.theveloper.pixelplay.presentation.components.SongInfoBottomSheet
-import com.theveloper.pixelplay.presentation.components.resolveNavBarOccupiedHeight
+import com.theveloper.pixelplay.presentation.components.resolveBottomBarHeightForMiniPlayerStack
+import com.theveloper.pixelplay.presentation.components.shouldUseOneByOneOptimisation
 import com.theveloper.pixelplay.presentation.navigation.Screen
 import com.theveloper.pixelplay.presentation.viewmodel.PlayerViewModel
 import com.theveloper.pixelplay.presentation.viewmodel.PlaylistViewModel
@@ -210,7 +212,18 @@ fun PlaylistDetailScreen(
     }
     val systemNavBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val navBarCompactMode by playerViewModel.navBarCompactMode.collectAsStateWithLifecycle()
-    val bottomBarHeightDp = resolveNavBarOccupiedHeight(systemNavBarInset, navBarCompactMode)
+    val oneByOneOptimisation by playerViewModel.oneByOneOptimisation.collectAsStateWithLifecycle()
+    val configuration = LocalConfiguration.current
+    val useOneByOneOptimisation = shouldUseOneByOneOptimisation(
+        enabled = oneByOneOptimisation,
+        screenWidthDp = configuration.screenWidthDp,
+        screenHeightDp = configuration.screenHeightDp
+    )
+    val bottomBarHeightDp = resolveBottomBarHeightForMiniPlayerStack(
+        systemNavBarInset = systemNavBarInset,
+        compactMode = navBarCompactMode,
+        oneByOneOptimisationActive = useOneByOneOptimisation
+    )
     var showPlaylistBottomSheet by remember { mutableStateOf(false) }
     var localReorderableSongs by remember(songsInPlaylist) { mutableStateOf(songsInPlaylist) }
 
@@ -995,7 +1008,8 @@ fun PlaylistDetailScreen(
                     listState.animateScrollToItem(0)
                 }
             },
-            showViewToggle = false 
+            showViewToggle = false,
+            oneByOneOptimisationActive = useOneByOneOptimisation
         )
     }
 }

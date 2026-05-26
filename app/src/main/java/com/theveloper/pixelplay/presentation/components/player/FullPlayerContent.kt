@@ -86,6 +86,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
@@ -102,6 +103,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.coerceAtLeast
+import androidx.compose.ui.unit.coerceAtMost
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.rounded.Cloud
@@ -258,6 +260,7 @@ fun FullPlayerContent(
     val selectedRouteName = fullPlayerSlice.selectedRouteName
     val isBluetoothEnabled = fullPlayerSlice.isBluetoothEnabled
     val bluetoothName = fullPlayerSlice.bluetoothName
+    val oneByOneOptimisation by playerViewModel.oneByOneOptimisation.collectAsStateWithLifecycle()
     val navigationBarBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val queueGestureBottomExclusion = maxOf(20.dp, navigationBarBottomInset + 8.dp)
     val queueGestureBottomExclusionPx = with(LocalDensity.current) {
@@ -322,8 +325,13 @@ fun FullPlayerContent(
     val placeholderColor = playerOnBaseColor.copy(alpha = 0.1f)
     val placeholderOnColor = playerOnBaseColor.copy(alpha = 0.2f)
 
-    val isLandscape =
-        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val screenWidthDp = configuration.screenWidthDp.coerceAtLeast(1)
+    val screenHeightDp = configuration.screenHeightDp.coerceAtLeast(1)
+    val screenAspect = maxOf(screenWidthDp, screenHeightDp).toFloat() / minOf(screenWidthDp, screenHeightDp)
+    val isOneByOneScreen = screenAspect <= 1.12f
+    val useOneByOneLayout = oneByOneOptimisation && isOneByOneScreen
 
 
     // Lógica para el botón de Lyrics en el reproductor expandido
@@ -364,7 +372,8 @@ fun FullPlayerContent(
                 },
                 onImport = {
                     filePickerLauncher.launch(com.theveloper.pixelplay.utils.LyricsImportSecurity.pickerMimeTypes())
-                }
+                },
+                oneByOneOptimisationActive = useOneByOneLayout
             )
         }
     }
@@ -514,6 +523,7 @@ fun FullPlayerContent(
             onAlbumClick = { albumSong ->
                 playerViewModel.triggerAlbumNavigationFromPlayer(albumSong.albumId)
             },
+            forceSquare = useOneByOneLayout,
             modifier = modifier
         )
     }
@@ -560,7 +570,8 @@ fun FullPlayerContent(
             isFavoriteProvider = isFavoriteProvider,
             onShuffleToggle = onShuffleToggle,
             onRepeatToggle = onRepeatToggle,
-            onFavoriteToggle = onFavoriteToggle
+            onFavoriteToggle = onFavoriteToggle,
+            compactLayout = useOneByOneLayout
         )
     }
 
@@ -583,7 +594,32 @@ fun FullPlayerContent(
             chipContentColor = playerAccentColor,
             onQueueClick = onSongMetadataQueueClick,
             onArtistClick = onSongMetadataArtistClick,
-            isPlayingProvider = isPlayingProvider
+            isPlayingProvider = isPlayingProvider,
+            showTextPanel = false
+        )
+    }
+
+    val squareSongMetadataSection: @Composable () -> Unit = {
+        FullPlayerSongMetadataSection(
+            song = song,
+            currentSongArtists = currentSongArtists,
+            loadingTweaks = loadingTweaks,
+            isSheetDragGestureActive = isSheetDragGestureActive,
+            expansionFractionProvider = expansionFractionProvider,
+            currentSheetState = currentSheetState,
+            placeholderColor = placeholderColor,
+            placeholderOnColor = placeholderOnColor,
+            isLandscape = false,
+            onLyricsClick = onLyricsClick,
+            playerOnBaseColor = playerOnBaseColor,
+            playerViewModel = playerViewModel,
+            gradientEdgeColor = LocalMaterialTheme.current.primaryContainer,
+            chipColor = playerOnAccentColor.copy(alpha = 0.8f),
+            chipContentColor = playerAccentColor,
+            onQueueClick = onSongMetadataQueueClick,
+            onArtistClick = onSongMetadataArtistClick,
+            isPlayingProvider = isPlayingProvider,
+            showTextPanel = true
         )
     }
 
@@ -670,7 +706,7 @@ fun FullPlayerContent(
         topBar = {
             // MD3: TopAppBar 在竖屏时滑入，横屏时向上滑出淡出
             AnimatedVisibility(
-                visible = !isLandscape,
+                visible = !isLandscape && !useOneByOneLayout,
                 enter = fadeIn(animationSpec = tween(350, easing = FastOutSlowInEasing)) +
                         slideInVertically(
                             initialOffsetY = { -it / 2 },
@@ -896,8 +932,8 @@ fun FullPlayerContent(
         }
     ) { paddingValues ->
         // MD3: 方向变化时先 alpha=0 再淡入新布局，避免双布局同时测量导致错位
-        var contentVisible by remember(isLandscape) { mutableStateOf(false) }
-        LaunchedEffect(isLandscape) { contentVisible = true }
+        var contentVisible by remember(isLandscape, useOneByOneLayout) { mutableStateOf(false) }
+        LaunchedEffect(isLandscape, useOneByOneLayout) { contentVisible = true }
         val contentAlpha by animateFloatAsState(
             targetValue = if (contentVisible) 1f else 0f,
             animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
@@ -908,7 +944,31 @@ fun FullPlayerContent(
                 .fillMaxSize()
                 .graphicsLayer { alpha = contentAlpha }
         ) {
-            if (isLandscape) {
+            if (useOneByOneLayout) {
+                FullPlayerSquareContent(
+                    paddingValues = paddingValues,
+                    albumCoverSection = albumCoverSection,
+                    topControlsSection = {
+                        FullPlayerSquareTopControls(
+                            isCastConnecting = isCastConnecting,
+                            isRemotePlaybackActive = isRemotePlaybackActive,
+                            isBluetoothEnabled = isBluetoothEnabled,
+                            bluetoothName = bluetoothName,
+                            playerAccentColor = playerAccentColor,
+                            playerOnAccentColor = playerOnAccentColor,
+                            onCollapse = onCollapse,
+                            onShowCastClicked = onShowCastClicked,
+                            onShowQueueClicked = {
+                                showSongInfoBottomSheet = true
+                                onShowQueueClicked()
+                            }
+                        )
+                    },
+                    songMetadataSection = squareSongMetadataSection,
+                    playerProgressSection = playerProgressSection,
+                    controlsSection = controlsSection
+                )
+            } else if (isLandscape) {
                 FullPlayerLandscapeContent(
                     paddingValues = paddingValues,
                     albumCoverSection = albumCoverSection,
@@ -972,7 +1032,8 @@ fun FullPlayerContent(
             isFavoriteProvider = isFavoriteProvider,
             onShuffleToggle = onShuffleToggle,
             onRepeatToggle = onRepeatToggle,
-            onFavoriteToggle = onFavoriteToggle
+            onFavoriteToggle = onFavoriteToggle,
+            oneByOneOptimisationActive = useOneByOneLayout
         )
     }
 
@@ -1011,10 +1072,11 @@ private fun FullPlayerAlbumCoverSection(
     requestedScrollIndex: Int?,
     onSongSelected: (Song) -> Unit,
     onAlbumClick: (Song) -> Unit,
+    forceSquare: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val shouldDelay = loadingTweaks.delayAll || loadingTweaks.delayAlbumCarousel
-    val shouldApplyPausedScale = !isPlayingProvider() && !playWhenReadyProvider()
+    val shouldApplyPausedScale = !forceSquare && !isPlayingProvider() && !playWhenReadyProvider()
     // Use a short deterministic tween instead of spring(StiffnessLow). The original
     // spring took ~1s to settle, producing ~60 frames of graphicsLayer invalidations
     // that overlapped with any subsequent sheet-collapse gesture. A 260 ms tween
@@ -1029,9 +1091,10 @@ private fun FullPlayerAlbumCoverSection(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = if (forceSquare) 0.dp else 8.dp)
     ) {
-        val carouselHeight = when (carouselStyle) {
+        val resolvedCarouselStyle = if (forceSquare) CarouselStyle.NO_PEEK else carouselStyle
+        val carouselHeight = when (resolvedCarouselStyle) {
             CarouselStyle.NO_PEEK -> maxWidth
             CarouselStyle.ONE_PEEK -> maxWidth * 0.8f
             CarouselStyle.TWO_PEEK -> maxWidth * 0.6f
@@ -1086,7 +1149,7 @@ private fun FullPlayerAlbumCoverSection(
                     }
                 },
                 onAlbumClick = onAlbumClick,
-                carouselStyle = carouselStyle,
+                carouselStyle = resolvedCarouselStyle,
                 modifier = Modifier
                     .height(carouselHeight)
                     .graphicsLayer {
@@ -1119,7 +1182,8 @@ private fun FullPlayerControlsSection(
     isFavoriteProvider: () -> Boolean,
     onShuffleToggle: () -> Unit,
     onRepeatToggle: () -> Unit,
-    onFavoriteToggle: () -> Unit
+    onFavoriteToggle: () -> Unit,
+    compactLayout: Boolean = false
 ) {
     val stableControlAnimationSpec = remember {
         tween<Float>(durationMillis = 240, easing = FastOutSlowInEasing)
@@ -1132,7 +1196,7 @@ private fun FullPlayerControlsSection(
         applyPlaceholderDelayOnClose = loadingTweaks.applyPlaceholdersOnClose,
         switchOnDragRelease = loadingTweaks.switchOnDragRelease,
         isSheetDragGestureActive = isSheetDragGestureActive,
-        sharedBoundsModifier = Modifier.fillMaxWidth().height(182.dp),
+        sharedBoundsModifier = Modifier.fillMaxWidth().height(if (compactLayout) 48.dp else 182.dp),
         expansionFractionProvider = expansionFractionProvider,
         isExpandedOverride = currentSheetState == PlayerSheetState.EXPANDED,
         normalStartThreshold = 0.42f,
@@ -1140,51 +1204,95 @@ private fun FullPlayerControlsSection(
         delayCloseThreshold = 1f - (loadingTweaks.contentCloseThresholdPercent / 100f),
         placeholder = {
             if (loadingTweaks.transparentPlaceholders) {
-                Box(Modifier.fillMaxWidth().height(182.dp))
+                Box(Modifier.fillMaxWidth().height(if (compactLayout) 48.dp else 182.dp))
             } else {
                 ControlsPlaceholder(placeholderColor, placeholderOnColor)
             }
         }
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            AnimatedPlaybackControls(
-                modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                isPlayingProvider = isPlayingProvider,
-                onPrevious = onPrevious,
-                onPlayPause = onPlayPause,
-                onNext = onNext,
-                height = 80.dp,
-                pressAnimationSpec = stableControlAnimationSpec,
-                releaseDelay = 220L,
-                colorOtherButtons = transportSkipColors.container,
-                colorPlayPause = transportPlayPauseColors.container,
-                tintPlayPauseIcon = transportPlayPauseColors.content,
-                tintOtherIcons = transportSkipColors.content,
-                colorPreviousButton = transportSkipColors.container,
-                colorNextButton = transportSkipColors.container,
-                tintPreviousIcon = transportSkipColors.content,
-                tintNextIcon = transportSkipColors.content
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            BottomToggleRow(
+        if (compactLayout) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 66.dp, max = 86.dp)
-                    .padding(horizontal = 26.dp, vertical = 0.dp)
-                    .padding(bottom = 6.dp),
-                isShuffleEnabled = isShuffleEnabledProvider(),
-                isShuffleTransitionInProgress = shuffleTransitionInProgress,
-                repeatMode = repeatModeProvider(),
-                isFavoriteProvider = isFavoriteProvider,
-                onShuffleToggle = onShuffleToggle,
-                onRepeatToggle = onRepeatToggle,
-                onFavoriteToggle = onFavoriteToggle
-            )
+                    .height(43.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BottomToggleRow(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 33.dp, max = 43.dp),
+                    isShuffleEnabled = isShuffleEnabledProvider(),
+                    isShuffleTransitionInProgress = shuffleTransitionInProgress,
+                    repeatMode = repeatModeProvider(),
+                    isFavoriteProvider = isFavoriteProvider,
+                    onShuffleToggle = onShuffleToggle,
+                    onRepeatToggle = onRepeatToggle,
+                    onFavoriteToggle = onFavoriteToggle
+                )
+
+                AnimatedPlaybackControls(
+                    modifier = Modifier.weight(1.2f),
+                    isPlayingProvider = isPlayingProvider,
+                    onPrevious = onPrevious,
+                    onPlayPause = onPlayPause,
+                    onNext = onNext,
+                    height = 40.dp,
+                    pressAnimationSpec = stableControlAnimationSpec,
+                    releaseDelay = 220L,
+                    colorOtherButtons = transportSkipColors.container,
+                    colorPlayPause = transportPlayPauseColors.container,
+                    tintPlayPauseIcon = transportPlayPauseColors.content,
+                    tintOtherIcons = transportSkipColors.content,
+                    colorPreviousButton = transportSkipColors.container,
+                    colorNextButton = transportSkipColors.container,
+                    tintPreviousIcon = transportSkipColors.content,
+                    tintNextIcon = transportSkipColors.content,
+                    playPauseIconSize = 22.dp,
+                    iconSize = 20.dp
+                )
+            }
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                AnimatedPlaybackControls(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    isPlayingProvider = isPlayingProvider,
+                    onPrevious = onPrevious,
+                    onPlayPause = onPlayPause,
+                    onNext = onNext,
+                    height = 80.dp,
+                    pressAnimationSpec = stableControlAnimationSpec,
+                    releaseDelay = 220L,
+                    colorOtherButtons = transportSkipColors.container,
+                    colorPlayPause = transportPlayPauseColors.container,
+                    tintPlayPauseIcon = transportPlayPauseColors.content,
+                    tintOtherIcons = transportSkipColors.content,
+                    colorPreviousButton = transportSkipColors.container,
+                    colorNextButton = transportSkipColors.container,
+                    tintPreviousIcon = transportSkipColors.content,
+                    tintNextIcon = transportSkipColors.content
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                BottomToggleRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 66.dp, max = 86.dp)
+                        .padding(horizontal = 26.dp, vertical = 0.dp)
+                        .padding(bottom = 6.dp),
+                    isShuffleEnabled = isShuffleEnabledProvider(),
+                    isShuffleTransitionInProgress = shuffleTransitionInProgress,
+                    repeatMode = repeatModeProvider(),
+                    isFavoriteProvider = isFavoriteProvider,
+                    onShuffleToggle = onShuffleToggle,
+                    onRepeatToggle = onRepeatToggle,
+                    onFavoriteToggle = onFavoriteToggle
+                )
+            }
         }
     }
 }
@@ -1314,7 +1422,8 @@ private fun FullPlayerSongMetadataSection(
     chipContentColor: Color,
     onQueueClick: () -> Unit,
     onArtistClick: () -> Unit,
-    isPlayingProvider: () -> Boolean = { true }
+    isPlayingProvider: () -> Boolean = { true },
+    showTextPanel: Boolean = false
 ) {
     val shouldDelay = loadingTweaks.delayAll || loadingTweaks.delaySongMetadata
 
@@ -1359,7 +1468,8 @@ private fun FullPlayerSongMetadataSection(
             showQueueButton = isLandscape,
             onClickQueue = onQueueClick,
             onClickArtist = onArtistClick,
-            isPlayingProvider = isPlayingProvider
+            isPlayingProvider = isPlayingProvider,
+            showTextPanel = showTextPanel
         )
     }
 }
@@ -1396,6 +1506,172 @@ private fun FullPlayerPortraitContent(
         }
 
         controlsSection()
+    }
+}
+
+@Composable
+private fun FullPlayerSquareContent(
+    paddingValues: PaddingValues,
+    albumCoverSection: @Composable (Modifier) -> Unit,
+    topControlsSection: @Composable () -> Unit,
+    songMetadataSection: @Composable () -> Unit,
+    playerProgressSection: @Composable () -> Unit,
+    controlsSection: @Composable () -> Unit
+) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(paddingValues)
+    ) {
+        val outerInset = 12.dp
+        val availableSquare = if (maxWidth < maxHeight) maxWidth else maxHeight
+        val albumSize = (availableSquare - outerInset - outerInset).coerceAtLeast(0.dp)
+
+        Box(
+            modifier = Modifier
+                .size(albumSize)
+                .align(Alignment.Center)
+        ) {
+            albumCoverSection(Modifier.fillMaxSize())
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(start = 6.dp, end = 6.dp, top = 6.dp)
+            ) {
+                topControlsSection()
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                songMetadataSection()
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color.Black.copy(alpha = 0.62f))
+                        .padding(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    playerProgressSection()
+                    controlsSection()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FullPlayerSquareTopControls(
+    isCastConnecting: Boolean,
+    isRemotePlaybackActive: Boolean,
+    isBluetoothEnabled: Boolean,
+    bluetoothName: String?,
+    playerAccentColor: Color,
+    playerOnAccentColor: Color,
+    onCollapse: () -> Unit,
+    onShowCastClicked: () -> Unit,
+    onShowQueueClicked: () -> Unit
+) {
+    val isBluetoothActive =
+        isBluetoothEnabled && !bluetoothName.isNullOrEmpty() && !isRemotePlaybackActive && !isCastConnecting
+    val castIconPainter = when {
+        isCastConnecting || isRemotePlaybackActive -> painterResource(R.drawable.rounded_cast_24)
+        isBluetoothActive -> painterResource(R.drawable.rounded_bluetooth_24)
+        else -> painterResource(R.drawable.rounded_mobile_speaker_24)
+    }
+    val chipColor = playerOnAccentColor.copy(alpha = 0.7f)
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        FullPlayerSquareIconButton(
+            width = 42.dp,
+            shape = CircleShape,
+            backgroundColor = chipColor,
+            contentColor = playerAccentColor,
+            painterResId = R.drawable.rounded_keyboard_arrow_down_24,
+            contentDescription = stringResource(R.string.presentation_batch_g_player_cd_collapse),
+            onClick = onCollapse
+        )
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(height = 42.dp, width = 50.dp)
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 50.dp,
+                            topEnd = 6.dp,
+                            bottomStart = 50.dp,
+                            bottomEnd = 6.dp
+                        )
+                    )
+                    .background(chipColor)
+                    .clickable { onShowCastClicked() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = castIconPainter,
+                    contentDescription = stringResource(R.string.presentation_batch_g_player_cd_cast),
+                    tint = playerAccentColor
+                )
+            }
+
+            FullPlayerSquareIconButton(
+                width = 50.dp,
+                shape = RoundedCornerShape(
+                    topStart = 6.dp,
+                    topEnd = 50.dp,
+                    bottomStart = 6.dp,
+                    bottomEnd = 50.dp
+                ),
+                backgroundColor = chipColor,
+                contentColor = playerAccentColor,
+                painterResId = R.drawable.rounded_queue_music_24,
+                contentDescription = stringResource(R.string.presentation_batch_g_player_cd_queue),
+                onClick = onShowQueueClicked
+            )
+        }
+    }
+}
+
+@Composable
+private fun FullPlayerSquareIconButton(
+    width: Dp,
+    shape: androidx.compose.ui.graphics.Shape,
+    backgroundColor: Color,
+    contentColor: Color,
+    painterResId: Int,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(height = 42.dp, width = width)
+            .clip(shape)
+            .background(backgroundColor)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(painterResId),
+            contentDescription = contentDescription,
+            tint = contentColor
+        )
     }
 }
 
@@ -1459,14 +1735,15 @@ private fun SongMetadataDisplaySection(
     onClickQueue: () -> Unit,
     onClickArtist: () -> Unit,
     modifier: Modifier = Modifier,
-    isPlayingProvider: () -> Boolean = { true }
+    isPlayingProvider: () -> Boolean = { true },
+    showTextPanel: Boolean = false
 ) {
     Row(
         modifier
             .fillMaxWidth()
             .heightIn(min = 70.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(if (showTextPanel) 6.dp else 12.dp)
     ) {
         song?.let { currentSong ->
             PlayerSongInfo(
@@ -1483,7 +1760,8 @@ private fun SongMetadataDisplaySection(
                 modifier = Modifier
                     .weight(1f)
                     .align(Alignment.CenterVertically),
-                isPlayingProvider = isPlayingProvider
+                isPlayingProvider = isPlayingProvider,
+                showTextPanel = showTextPanel
             )
         }
         
@@ -2124,7 +2402,8 @@ private fun PlayerSongInfo(
     playerViewModel: PlayerViewModel,
     onClickArtist: () -> Unit,
     modifier: Modifier = Modifier,
-    isPlayingProvider: () -> Boolean = { true }
+    isPlayingProvider: () -> Boolean = { true },
+    showTextPanel: Boolean = false
 ) {
     val coroutineScope = rememberCoroutineScope()
     var isNavigatingToArtist by remember { mutableStateOf(false) }
@@ -2141,18 +2420,40 @@ private fun PlayerSongInfo(
         letterSpacing = 0.sp,
         color = artistTextColor
     )
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val panelHorizontalPadding = 10.dp
 
-    Column(
-        horizontalAlignment = Alignment.Start,
-            modifier = modifier
-                .padding(vertical = 4.dp)
-                .fillMaxWidth()
+    BoxWithConstraints(
+        modifier = modifier
+            .padding(vertical = 4.dp)
             .graphicsLayer {
                 val fraction = expansionFractionProvider()
                 alpha = fraction // Or apply specific fade logic if desired
                 translationY = (1f - fraction) * 24f
             }
     ) {
+        val panelModifier = if (showTextPanel) {
+            val measuredTextWidth = remember(title, artist, titleStyle, artistStyle, density) {
+                with(density) {
+                    maxOf(
+                        textMeasurer.measure(text = title, style = titleStyle).size.width,
+                        textMeasurer.measure(text = artist, style = artistStyle).size.width
+                    ).toDp()
+                }
+            }
+            Modifier
+                .width((measuredTextWidth + panelHorizontalPadding * 2).coerceAtMost(maxWidth))
+                .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(18.dp))
+                .padding(horizontal = panelHorizontalPadding, vertical = 8.dp)
+        } else {
+            Modifier.fillMaxWidth()
+        }
+
+        Column(
+            horizontalAlignment = Alignment.Start,
+            modifier = panelModifier
+        ) {
         // We pass 1f to AutoScrollingTextOnDemand because the alpha/translation is now handled by the parent Column graphicsLayer
         // and we want it "fully rendered" but hidden/moved by the layer.
         // Actually, AutoScrollingTextOnDemand uses expansionFraction to start scrolling only when fully expanded?
@@ -2207,6 +2508,7 @@ private fun PlayerSongInfo(
             ),
             canScroll = isPlayingProvider()
         )
+        }
     }
 }
 

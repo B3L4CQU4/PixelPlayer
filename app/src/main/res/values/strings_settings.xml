@@ -90,6 +90,8 @@
     <string name="setcat_player_theme_dynamic">System Dynamic</string>
     <string name="setcat_show_player_file_info_title">Show player file info</string>
     <string name="setcat_show_player_file_info_subtitle">Show codec, bitrate, and sample rate in the player progress section.</string>
+    <string name="setcat_one_by_one_optimisation_title">1x1 optimisation</string>
+    <string name="setcat_one_by_one_optimisation_subtitle">Use a compact square full-player layout for 1:1 screens.</string>
     <string name="setcat_album_art_palette_title">Album Art Palette Style</string>
     <string name="setcat_album_art_palette_subtitle">Current: %1$s. Open live preview and choose style.</string>
     <string name="setcat_carousel_style_label">Carousel Style</string>

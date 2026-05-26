@@ -40,6 +40,7 @@ internal val NavBarContentHeightFullWidth = NavBarContentHeight // Altura del co
 private val MainScreenBottomGradientExtraHeight = MiniPlayerHeight + MiniPlayerBottomSpacer + 8.dp
 // Some OEM freeform/floating-window modes can report a bottom inset close to the whole window height.
 internal val MaxNavigationBarBottomInset = 96.dp
+internal const val OneByOneAspectThreshold = 1.12f
 
 internal fun sanitizeNavigationBarBottomInset(systemNavBarInset: Dp): Dp {
     if (!systemNavBarInset.value.isFinite()) return 0.dp
@@ -68,6 +69,33 @@ internal fun resolveNavBarContentHeight(compactMode: Boolean): Dp =
 internal fun resolveMainScreenBottomGradientHeight(compactMode: Boolean): Dp =
     resolveNavBarContentHeight(compactMode) + MainScreenBottomGradientExtraHeight
 
+internal fun isOneByOneScreen(
+    screenWidthDp: Int,
+    screenHeightDp: Int,
+    threshold: Float = OneByOneAspectThreshold
+): Boolean {
+    val safeWidth = screenWidthDp.coerceAtLeast(1)
+    val safeHeight = screenHeightDp.coerceAtLeast(1)
+    val aspect = maxOf(safeWidth, safeHeight).toFloat() / minOf(safeWidth, safeHeight)
+    return aspect <= threshold
+}
+
+internal fun shouldUseOneByOneOptimisation(
+    enabled: Boolean,
+    screenWidthDp: Int,
+    screenHeightDp: Int
+): Boolean = enabled && isOneByOneScreen(screenWidthDp, screenHeightDp)
+
+internal fun resolveMainScreenBottomGradientHeight(
+    compactMode: Boolean,
+    oneByOneOptimisationActive: Boolean
+): Dp =
+    if (oneByOneOptimisationActive) {
+        MiniPlayerHeight + MiniPlayerBottomSpacer + 8.dp
+    } else {
+        resolveMainScreenBottomGradientHeight(compactMode)
+    }
+
 internal fun resolveNavBarSurfaceHeight(
     navBarStyle: String,
     systemNavBarInset: Dp,
@@ -86,6 +114,28 @@ internal fun resolveNavBarOccupiedHeight(
     compactMode: Boolean
 ): Dp = resolveNavBarContentHeight(compactMode) + systemNavBarInset
 
+internal fun resolveBottomChromeHeight(
+    systemNavBarInset: Dp,
+    compactMode: Boolean,
+    oneByOneOptimisationActive: Boolean
+): Dp =
+    if (oneByOneOptimisationActive) {
+        MiniPlayerHeight + systemNavBarInset
+    } else {
+        resolveNavBarOccupiedHeight(systemNavBarInset, compactMode)
+    }
+
+internal fun resolveBottomBarHeightForMiniPlayerStack(
+    systemNavBarInset: Dp,
+    compactMode: Boolean,
+    oneByOneOptimisationActive: Boolean
+): Dp =
+    if (oneByOneOptimisationActive) {
+        systemNavBarInset
+    } else {
+        resolveNavBarOccupiedHeight(systemNavBarInset, compactMode)
+    }
+
 @Composable
 private fun PlayerInternalNavigationItemsRow(
     navController: NavHostController,
@@ -95,7 +145,11 @@ private fun PlayerInternalNavigationItemsRow(
     navBarStyle: String,
     compactMode: Boolean,
     bottomBarPadding: Dp,
-    onSearchIconDoubleTap: () -> Unit
+    onSearchIconDoubleTap: () -> Unit,
+    oneByOneMode: Boolean,
+    oneByOneExpanded: Boolean,
+    onOneByOneCollapsedClick: () -> Unit,
+    onOneByOneItemSelected: () -> Unit
 ) {
     val navBarInsetPadding = sanitizeNavigationBarBottomInset(
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -124,13 +178,21 @@ private fun PlayerInternalNavigationItemsRow(
     ) {
         val scope = rememberCoroutineScope()
         var lastSearchTapTimestamp by remember { mutableStateOf(0L) }
-        navItems.forEach { item ->
+        val visibleNavItems = if (oneByOneMode && !oneByOneExpanded) {
+            navItems.filter { item -> currentRoute == item.screen.route }
+                .ifEmpty { navItems.take(1) }
+        } else {
+            navItems
+        }
+        visibleNavItems.forEach { item ->
             val isSelected = currentRoute != null && currentRoute == item.screen.route
+            val isCollapsedOneByOne = oneByOneMode && !oneByOneExpanded
+            val isVisuallySelected = isSelected && !isCollapsedOneByOne
             val selectedColor = MaterialTheme.colorScheme.primary
             val unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
             val indicatorColorFromTheme = MaterialTheme.colorScheme.secondaryContainer
 
-            val iconPainterResId = if (isSelected && item.selectedIconResId != null && item.selectedIconResId != 0) {
+            val iconPainterResId = if (isVisuallySelected && item.selectedIconResId != null && item.selectedIconResId != 0) {
                 item.selectedIconResId
             } else {
                 item.iconResId
@@ -158,10 +220,23 @@ private fun PlayerInternalNavigationItemsRow(
                     { Text(item.label) }
                 }
             }
-            val onClickLambda: () -> Unit = remember(item.screen.route, navController, scope) {
+            val onClickLambda: () -> Unit = remember(
+                item.screen.route,
+                navController,
+                scope,
+                oneByOneMode,
+                oneByOneExpanded,
+                onOneByOneCollapsedClick,
+                onOneByOneItemSelected
+            ) {
                 click@{
                     if (!latestNavigationEnabled) {
                         lastSearchTapTimestamp = 0L
+                        return@click
+                    }
+
+                    if (oneByOneMode && !oneByOneExpanded) {
+                        onOneByOneCollapsedClick()
                         return@click
                     }
 
@@ -179,6 +254,7 @@ private fun PlayerInternalNavigationItemsRow(
                                 lastSearchTapTimestamp = 0L
                                 return@click
                             }
+                            onOneByOneItemSelected()
                         }
 
                         if (isDoubleTap) {
@@ -195,14 +271,18 @@ private fun PlayerInternalNavigationItemsRow(
                     } else if (!isAlreadySelected) {
                         lastSearchTapTimestamp = 0L
                         navController.navigateToTopLevelSafely(itemRoute)
+                        onOneByOneItemSelected()
                     } else {
                         lastSearchTapTimestamp = 0L
+                        if (oneByOneMode && oneByOneExpanded) {
+                            onOneByOneItemSelected()
+                        }
                     }
                 }
             }
             CustomNavigationBarItem(
-                modifier = Modifier.weight(1f),
-                selected = isSelected,
+                modifier = if (isCollapsedOneByOne) Modifier else Modifier.weight(1f),
+                selected = isVisuallySelected,
                 onClick = onClickLambda,
                 enabled = currentRoute != null,
                 compactMode = compactMode,
@@ -230,7 +310,11 @@ fun PlayerInternalNavigationBar(
     navBarStyle: String,
     compactMode: Boolean,
     bottomBarPadding: Dp = 0.dp,
-    onSearchIconDoubleTap: () -> Unit = {}
+    onSearchIconDoubleTap: () -> Unit = {},
+    oneByOneMode: Boolean = false,
+    oneByOneExpanded: Boolean = false,
+    onOneByOneCollapsedClick: () -> Unit = {},
+    onOneByOneItemSelected: () -> Unit = {}
 ) {
     PlayerInternalNavigationItemsRow(
         navController = navController,
@@ -240,6 +324,10 @@ fun PlayerInternalNavigationBar(
         compactMode = compactMode,
         bottomBarPadding = bottomBarPadding,
         onSearchIconDoubleTap = onSearchIconDoubleTap,
+        oneByOneMode = oneByOneMode,
+        oneByOneExpanded = oneByOneExpanded,
+        onOneByOneCollapsedClick = onOneByOneCollapsedClick,
+        onOneByOneItemSelected = onOneByOneItemSelected,
         modifier = modifier
     )
 }

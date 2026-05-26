@@ -69,7 +69,8 @@ internal fun MiniPlayerContentInternal(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
-    canScroll: Boolean = true
+    canScroll: Boolean = true,
+    artOnly: Boolean = false
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val controlsEnabled = !isCastConnecting && !isPreparingPlayback
@@ -83,7 +84,7 @@ internal fun MiniPlayerContentInternal(
         modifier = modifier
             .fillMaxWidth()
             .height(MiniPlayerHeight)
-            .padding(start = 10.dp, end = 12.dp),
+            .padding(start = 10.dp, end = if (artOnly) 10.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val albumArtModel = song.albumArtUriString?.takeIf { it.isNotBlank() }
@@ -110,11 +111,12 @@ internal fun MiniPlayerContentInternal(
                 CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
             }
         }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center
-        ) {
+        if (!artOnly) {
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
             val titleStyle = MaterialTheme.typography.titleSmall.copy(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -146,76 +148,77 @@ internal fun MiniPlayerContentInternal(
                 canScroll = canScroll
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(LocalMaterialTheme.current.onPrimary)
-                .clickable(
-                    interactionSource = previousInteraction,
-                    indication = miniPlayerIndication,
-                    enabled = controlsEnabled
-                ) {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onPrevious()
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.SkipPrevious,
-                contentDescription = "Anterior",
-                tint = LocalMaterialTheme.current.primary,
-                modifier = Modifier.size(22.dp)
-            )
-        }
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(LocalMaterialTheme.current.onPrimary)
+                    .clickable(
+                        interactionSource = previousInteraction,
+                        indication = miniPlayerIndication,
+                        enabled = controlsEnabled
+                    ) {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onPrevious()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.SkipPrevious,
+                    contentDescription = "Anterior",
+                    tint = LocalMaterialTheme.current.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
 
-        Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(LocalMaterialTheme.current.primary)
-                .clickable(
-                    interactionSource = playPauseInteraction,
-                    indication = miniPlayerIndication,
-                    enabled = controlsEnabled
-                ) {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onPlayPause()
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                contentDescription = if (isPlaying) "Pausar" else "Reproducir",
-                tint = LocalMaterialTheme.current.onPrimary,
-                modifier = Modifier.size(22.dp)
-            )
-        }
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(LocalMaterialTheme.current.primary)
+                    .clickable(
+                        interactionSource = playPauseInteraction,
+                        indication = miniPlayerIndication,
+                        enabled = controlsEnabled
+                    ) {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onPlayPause()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (isPlaying) "Pausar" else "Reproducir",
+                    tint = LocalMaterialTheme.current.onPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
 
-        Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(LocalMaterialTheme.current.onPrimary)
-                .clickable(
-                    interactionSource = nextInteraction,
-                    indication = miniPlayerIndication,
-                    enabled = controlsEnabled
-                ) { onNext() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.SkipNext,
-                contentDescription = "Siguiente",
-                tint = LocalMaterialTheme.current.primary,
-                modifier = Modifier.size(22.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(LocalMaterialTheme.current.onPrimary)
+                    .clickable(
+                        interactionSource = nextInteraction,
+                        indication = miniPlayerIndication,
+                        enabled = controlsEnabled
+                    ) { onNext() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.SkipNext,
+                    contentDescription = "Siguiente",
+                    tint = LocalMaterialTheme.current.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
     }
 }

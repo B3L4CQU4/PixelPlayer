@@ -66,7 +66,8 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
     onQueueDragStart: () -> Unit,
     onQueueDrag: (Float) -> Unit,
     onQueueRelease: (Float, Float) -> Unit,
-    onShowCastClicked: () -> Unit
+    onShowCastClicked: () -> Unit,
+    miniPlayerArtOnly: Boolean = false
 ) {
     currentSong?.let { currentSongNonNull ->
         miniPlayerScheme?.let { readyScheme ->
@@ -103,6 +104,7 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
                         onPrevious = { playerViewModel.previousSong() },
                         onNext = { playerViewModel.nextSong() },
                         canScroll = isMiniPlayerVisible && infrequentPlayerState.isPlaying,
+                        artOnly = miniPlayerArtOnly,
                         modifier = Modifier.fillMaxSize()
                     )
                 }

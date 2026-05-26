@@ -35,6 +35,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -64,6 +65,7 @@ import com.theveloper.pixelplay.presentation.components.SmartImageCompactListTar
 import com.theveloper.pixelplay.presentation.components.SmartImage
 import com.theveloper.pixelplay.presentation.components.SongInfoBottomSheet
 import com.theveloper.pixelplay.presentation.components.extractFastScrollGlyph
+import com.theveloper.pixelplay.presentation.components.shouldUseOneByOneOptimisation
 import com.theveloper.pixelplay.presentation.components.subcomps.EnhancedSongListItem
 import com.theveloper.pixelplay.presentation.screens.QuickFillDialog
 import com.theveloper.pixelplay.presentation.viewmodel.GenreDetailListItem
@@ -117,6 +119,13 @@ fun GenreDetailScreen(
 
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val systemNavBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val oneByOneOptimisation by playerViewModel.oneByOneOptimisation.collectAsStateWithLifecycle()
+    val configuration = LocalConfiguration.current
+    val useOneByOneOptimisation = shouldUseOneByOneOptimisation(
+        enabled = oneByOneOptimisation,
+        screenWidthDp = configuration.screenWidthDp,
+        screenHeightDp = configuration.screenHeightDp
+    )
     val minTopBarHeight = 58.dp + statusBarHeight // Reduced by 6dp from 64.dp
     val maxTopBarHeight = 200.dp
     val minTopBarHeightPx = with(density) { minTopBarHeight.toPx() }
@@ -418,6 +427,7 @@ fun GenreDetailScreen(
                             showSortSheet = false
                         }
                     },
+                    oneByOneOptimisationActive = useOneByOneOptimisation,
                     headerContent = if (isUnknownGenre) {
                         {
                             Button(

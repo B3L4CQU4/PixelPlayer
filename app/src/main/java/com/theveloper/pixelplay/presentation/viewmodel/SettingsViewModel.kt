@@ -86,6 +86,7 @@ data class SettingsUiState(
     val beta05CleanInstallDisclaimerDismissed: Boolean? = null,
     val fullPlayerLoadingTweaks: FullPlayerLoadingTweaks = FullPlayerLoadingTweaks(),
     val showPlayerFileInfo: Boolean = true,
+    val oneByOneOptimisation: Boolean = true,
     // Developer Options
     val albumArtQuality: AlbumArtQuality = AlbumArtQuality.MEDIUM,
     val albumArtCacheLimitMb: Int = 200,
@@ -146,7 +147,8 @@ private sealed interface SettingsUiUpdate {
         val libraryNavigationMode: String,
         val carouselStyle: String,
         val launchTab: String,
-        val showPlayerFileInfo: Boolean
+        val showPlayerFileInfo: Boolean,
+        val oneByOneOptimisation: Boolean
     ) : SettingsUiUpdate
     
     data class Group2(
@@ -501,7 +503,8 @@ class SettingsViewModel @Inject constructor(
                 userPreferencesRepository.libraryNavigationModeFlow,
                 userPreferencesRepository.carouselStyleFlow,
                 userPreferencesRepository.launchTabFlow,
-                userPreferencesRepository.showPlayerFileInfoFlow
+                userPreferencesRepository.showPlayerFileInfoFlow,
+                userPreferencesRepository.oneByOneOptimisationFlow
             ) { values ->
                 SettingsUiUpdate.Group1(
                     appRebrandDialogShown = values[0] as Boolean,
@@ -516,7 +519,8 @@ class SettingsViewModel @Inject constructor(
                     libraryNavigationMode = values[9] as String,
                     carouselStyle = values[10] as String,
                     launchTab = values[11] as String,
-                    showPlayerFileInfo = values[12] as Boolean
+                    showPlayerFileInfo = values[12] as Boolean,
+                    oneByOneOptimisation = values[13] as Boolean
                 )
             }.collect { update ->
                 _uiState.update { state ->
@@ -533,7 +537,8 @@ class SettingsViewModel @Inject constructor(
                         libraryNavigationMode = update.libraryNavigationMode,
                         carouselStyle = update.carouselStyle,
                         launchTab = update.launchTab,
-                        showPlayerFileInfo = update.showPlayerFileInfo
+                        showPlayerFileInfo = update.showPlayerFileInfo,
+                        oneByOneOptimisation = update.oneByOneOptimisation
                     )
                 }
             }
@@ -830,6 +835,12 @@ class SettingsViewModel @Inject constructor(
     fun setShowPlayerFileInfo(show: Boolean) {
         viewModelScope.launch {
             userPreferencesRepository.setShowPlayerFileInfo(show)
+        }
+    }
+
+    fun setOneByOneOptimisation(enabled: Boolean) {
+        viewModelScope.launch {
+            userPreferencesRepository.setOneByOneOptimisation(enabled)
         }
     }
 

@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.Check
@@ -46,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -75,9 +79,13 @@ fun LibrarySortBottomSheet(
     onViewToggleChange: (Boolean) -> Unit = {},
     viewToggleContent: (@Composable () -> Unit)? = null,
     sourceToggleContent: (@Composable () -> Unit)? = null,
-    extraContent: (@Composable () -> Unit)? = null
+    extraContent: (@Composable () -> Unit)? = null,
+    oneByOneOptimisationActive: Boolean = false
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val configuration = LocalConfiguration.current
+    val scrollState = rememberScrollState()
+    val oneByOneSheetMaxHeight = maxOf(280.dp, configuration.screenHeightDp.dp - 48.dp)
 
     val selectedColor = MaterialTheme.colorScheme.secondaryContainer
     val unselectedColor = MaterialTheme.colorScheme.surfaceContainerLow
@@ -104,6 +112,15 @@ fun LibrarySortBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(
+                    if (oneByOneOptimisationActive) {
+                        Modifier
+                            .heightIn(max = oneByOneSheetMaxHeight)
+                            .verticalScroll(scrollState)
+                    } else {
+                        Modifier
+                    }
+                )
                 .padding(horizontal = 24.dp, vertical = 0.dp)
                 .selectableGroup(),
             verticalArrangement = Arrangement.spacedBy(2.dp)

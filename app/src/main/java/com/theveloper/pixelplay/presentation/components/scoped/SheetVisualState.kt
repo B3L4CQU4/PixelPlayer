@@ -34,7 +34,8 @@ internal data class SheetVisualState(
 @Composable
 internal fun rememberSheetVisualState(
     showPlayerContentArea: Boolean,
-    collapsedStateHorizontalPadding: Dp,
+    collapsedStateHorizontalPaddingStart: Dp,
+    collapsedStateHorizontalPaddingEnd: Dp,
     predictiveBackCollapseProgress: Float,
     predictiveBackSwipeEdge: Int?,
     currentSheetContentState: PlayerSheetState,
@@ -47,7 +48,9 @@ internal fun rememberSheetVisualState(
     isNavBarHidden: Boolean,
     isPlaying: Boolean,
     hasCurrentSong: Boolean,
-    swipeDismissProgress: Float
+    swipeDismissProgress: Float,
+    roundCollapsedMiniPlayer: Boolean = false,
+    collapsedMiniPlayerCornerRadius: Dp = 32.dp
 ): SheetVisualState {
     // Compute in px to be read inside graphicsLayer (draw phase) — zero relayout per drag frame.
     val density = LocalDensity.current
@@ -102,10 +105,14 @@ internal fun rememberSheetVisualState(
         navBarCornerRadiusDp,
         isNavBarHidden,
         swipeDismissProgress,
-        currentSheetContentState
+        currentSheetContentState,
+        roundCollapsedMiniPlayer,
+        collapsedMiniPlayerCornerRadius
     ) {
         {
-            val collapsedCornerTarget = if (navBarStyle == NavBarStyle.DEFAULT) {
+            val collapsedCornerTarget = if (roundCollapsedMiniPlayer) {
+                collapsedMiniPlayerCornerRadius
+            } else if (navBarStyle == NavBarStyle.DEFAULT) {
                 navBarCornerRadiusDp
             } else if (navBarStyle == NavBarStyle.FULL_WIDTH) {
                 32.dp
@@ -162,10 +169,14 @@ internal fun rememberSheetVisualState(
         swipeDismissProgress,
         isNavBarHidden,
         navBarCornerRadiusDp,
-        currentSheetContentState
+        currentSheetContentState,
+        roundCollapsedMiniPlayer,
+        collapsedMiniPlayerCornerRadius
     ) {
         {
-            val collapsedRadius = if (navBarStyle == NavBarStyle.DEFAULT) {
+            val collapsedRadius = if (roundCollapsedMiniPlayer) {
+                collapsedMiniPlayerCornerRadius
+            } else if (navBarStyle == NavBarStyle.DEFAULT) {
                 10.dp
             } else if (navBarStyle == NavBarStyle.FULL_WIDTH) {
                 32.dp
@@ -211,42 +222,47 @@ internal fun rememberSheetVisualState(
         }
     }
 
-    val actualCollapsedStateHorizontalPadding =
-        if (navBarStyle == NavBarStyle.FULL_WIDTH) 14.dp else collapsedStateHorizontalPadding
-    val collapsedStateHorizontalPaddingPx = remember(actualCollapsedStateHorizontalPadding, density) {
-        with(density) { actualCollapsedStateHorizontalPadding.toPx() }
+    val actualCollapsedStateHorizontalPaddingStart =
+        if (navBarStyle == NavBarStyle.FULL_WIDTH) 14.dp else collapsedStateHorizontalPaddingStart
+    val actualCollapsedStateHorizontalPaddingEnd =
+        if (navBarStyle == NavBarStyle.FULL_WIDTH) 14.dp else collapsedStateHorizontalPaddingEnd
+    val collapsedStateHorizontalPaddingStartPx = remember(actualCollapsedStateHorizontalPaddingStart, density) {
+        with(density) { actualCollapsedStateHorizontalPaddingStart.toPx() }
+    }
+    val collapsedStateHorizontalPaddingEndPx = remember(actualCollapsedStateHorizontalPaddingEnd, density) {
+        with(density) { actualCollapsedStateHorizontalPaddingEnd.toPx() }
     }
 
     // Draw-phase lambda providers for horizontal padding — read inside graphicsLayer to avoid
     // per-frame relayout. The lambda captures Animatable/Float refs and reads them at draw time.
     val currentHorizontalPaddingStartPxProvider: () -> Float = remember(
         showPlayerContentArea,
-        collapsedStateHorizontalPaddingPx,
+        collapsedStateHorizontalPaddingStartPx,
         playerContentExpansionFraction,
         predictiveBackCollapseProgress
     ) {
         {
             if (showPlayerContentArea) {
                 val effectiveFraction = playerContentExpansionFraction.value * (1f - predictiveBackCollapseProgress)
-                androidx.compose.ui.util.lerp(collapsedStateHorizontalPaddingPx, 0f, effectiveFraction)
+                androidx.compose.ui.util.lerp(collapsedStateHorizontalPaddingStartPx, 0f, effectiveFraction)
             } else {
-                collapsedStateHorizontalPaddingPx
+                collapsedStateHorizontalPaddingStartPx
             }
         }
     }
 
     val currentHorizontalPaddingEndPxProvider: () -> Float = remember(
         showPlayerContentArea,
-        collapsedStateHorizontalPaddingPx,
+        collapsedStateHorizontalPaddingEndPx,
         playerContentExpansionFraction,
         predictiveBackCollapseProgress
     ) {
         {
             if (showPlayerContentArea) {
                 val effectiveFraction = playerContentExpansionFraction.value * (1f - predictiveBackCollapseProgress)
-                androidx.compose.ui.util.lerp(collapsedStateHorizontalPaddingPx, 0f, effectiveFraction)
+                androidx.compose.ui.util.lerp(collapsedStateHorizontalPaddingEndPx, 0f, effectiveFraction)
             } else {
-                collapsedStateHorizontalPaddingPx
+                collapsedStateHorizontalPaddingEndPx
             }
         }
     }

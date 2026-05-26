@@ -67,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -105,6 +106,7 @@ import com.theveloper.pixelplay.data.repository.LyricsSearchResult
 import com.theveloper.pixelplay.presentation.screens.TabAnimation
 import com.theveloper.pixelplay.presentation.components.subcomps.FetchLyricsDialog
 import com.theveloper.pixelplay.presentation.components.subcomps.PlayerSeekBar
+import com.theveloper.pixelplay.presentation.components.WavySliderExpressive
 import com.theveloper.pixelplay.presentation.viewmodel.LyricsSearchUiState
 import com.theveloper.pixelplay.presentation.viewmodel.StablePlayerState
 import com.theveloper.pixelplay.ui.theme.GoogleSansRounded
@@ -130,6 +132,7 @@ import com.theveloper.pixelplay.data.preferences.dataStore
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilledTonalIconButton
@@ -256,7 +259,8 @@ fun LyricsSheet(
     swipeThreshold: Dp = 100.dp,
     highlightZoneFraction: Float = 0.08f, // Reduced from 0.22 for less padding
     highlightOffsetDp: Dp = 32.dp,
-    autoscrollAnimationSpec: AnimationSpec<Float>? = null // null = auto-detect from preference
+    autoscrollAnimationSpec: AnimationSpec<Float>? = null, // null = auto-detect from preference
+    oneByOneOptimisationActive: Boolean = false
 ) {
     // ─── Enter / Exit animation state ────────────────────────────────────────
     // Mirrors the player-sheet pattern: a plain Float in state drives graphicsLayer
@@ -302,6 +306,10 @@ fun LyricsSheet(
     val lyrics by remember(stablePlayerState) { derivedStateOf { stablePlayerState.lyrics } }
     val isPlaying by remember(stablePlayerState) { derivedStateOf { stablePlayerState.isPlaying } }
     val currentSong by remember(stablePlayerState) { derivedStateOf { stablePlayerState.currentSong } }
+    val showTrackInfoHeader = !oneByOneOptimisationActive
+    val lyricsContentTopPadding = if (oneByOneOptimisationActive) 32.dp else 130.dp
+    val lyricsTopGradientHeight = if (oneByOneOptimisationActive) 56.dp else 130.dp
+    val lyricsProgressHeight = if (oneByOneOptimisationActive) 78.dp else 50.dp
 
     val hasTranslatedLyrics = remember(lyrics) {
         // Translated lyrics read same timestamp on the lrc, not possible in plain type lyrics
@@ -538,7 +546,8 @@ fun LyricsSheet(
                         onBackClick()
                     }
                 },
-                onImport = onImportLyrics
+                onImport = onImportLyrics,
+                oneByOneOptimisationActive = oneByOneOptimisationActive
             )
         }
     }
@@ -698,44 +707,51 @@ fun LyricsSheet(
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                // Track Info Header (Fixed at top)
-                AnimatedContent(
-                    targetState = currentSong,
-                    transitionSpec = {
-                        (fadeIn(animationSpec = tween(300)) + 
-                         scaleIn(initialScale = 0.9f, animationSpec = tween(300)))
-                        .togetherWith(fadeOut(animationSpec = tween(300)))
-                    },
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .zIndex(2f)
-                        .wrapContentWidth(),
-                    label = "headerAnimation"
-                ) { song ->
-                    LyricsTrackInfo(
-                        song = song,
+                if (showTrackInfoHeader) {
+                    // Track Info Header (Fixed at top)
+                    AnimatedContent(
+                        targetState = currentSong,
+                        transitionSpec = {
+                            (fadeIn(animationSpec = tween(300)) +
+                                scaleIn(initialScale = 0.9f, animationSpec = tween(300)))
+                                .togetherWith(fadeOut(animationSpec = tween(300)))
+                        },
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .padding(
-                                top = 4.dp, bottom = 24.dp, start = 18.dp, end = 18.dp
-                            )
-                            .background(
-                                color = backgroundColor,
-                                shape = CircleShape
-                            )
-                            .wrapContentWidth()
-                            .animateContentSize(), // Animate width changes
-                        backgroundColor = backgroundColor, // Distinct solid background
-                        contentColor = onBackgroundColor,
-                        isPlaying = isPlaying
-                    )
+                            .zIndex(2f)
+                            .wrapContentWidth(),
+                        label = "headerAnimation"
+                    ) { song ->
+                        LyricsTrackInfo(
+                            song = song,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(
+                                    top = 4.dp, bottom = 24.dp, start = 18.dp, end = 18.dp
+                                )
+                                .background(
+                                    color = backgroundColor,
+                                    shape = CircleShape
+                                )
+                                .wrapContentWidth()
+                                .animateContentSize(), // Animate width changes
+                            backgroundColor = backgroundColor, // Distinct solid background
+                            contentColor = onBackgroundColor,
+                            isPlaying = isPlaying
+                        )
+                    }
                 }
 
                 when (showSyncedLyrics) {
                     null -> {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(top = 110.dp, bottom = 24.dp, start = 24.dp, end = 24.dp)
+                            contentPadding = PaddingValues(
+                                top = if (oneByOneOptimisationActive) 32.dp else 110.dp,
+                                bottom = 24.dp,
+                                start = 24.dp,
+                                end = 24.dp
+                            )
                         ) {
                             item(key = "loader_or_empty") {
                                 Box(
@@ -768,7 +784,7 @@ fun LyricsSheet(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(horizontal = 24.dp),
-                                contentPadding = PaddingValues(top = 130.dp, bottom = 100.dp),
+                                contentPadding = PaddingValues(top = lyricsContentTopPadding, bottom = 100.dp),
                                 lines = synced,
                                 listState = syncedListState,
                                 playbackPositionFlow = playbackPositionFlow,
@@ -822,7 +838,7 @@ fun LyricsSheet(
                                 contentPadding = PaddingValues(
                                     start = 24.dp,
                                     end = 24.dp,
-                                    top = 130.dp,
+                                    top = lyricsContentTopPadding,
                                     bottom = 24.dp
                                 )
                             ) {
@@ -849,7 +865,7 @@ fun LyricsSheet(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(130.dp)
+                        .height(lyricsTopGradientHeight)
                         .align(Alignment.TopCenter)
                         .background(
                             brush = Brush.verticalGradient(
@@ -921,52 +937,26 @@ fun LyricsSheet(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Play/Pause Button (Smaller)
-                    val playPauseCornerRadius by animateDpAsState(
-                        targetValue = if (isPlaying) 18.dp else 50.dp,
-                        animationSpec = spring(stiffness = Spring.StiffnessLow),
-                        label = "playPauseShape"
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .size(78.dp)
-                            .clip(RoundedCornerShape(playPauseCornerRadius))
-                            .background(playPauseColor)
-                            .clickable {
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onPlayPause()
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AnimatedContent(
-                            targetState = isPlaying,
-                            label = "playPauseIconAnimation"
-                        ) { playing ->
-                            if (playing) {
-                                Icon(
-                                    modifier = Modifier.size(32.dp),
-                                    imageVector = Icons.Rounded.Pause,
-                                    contentDescription = "Pause",
-                                    tint = onPlayPauseColor
-                                )
-                            } else {
-                                Icon(
-                                    modifier = Modifier.size(32.dp),
-                                    imageVector = Icons.Rounded.PlayArrow,
-                                    contentDescription = stringResource(R.string.cd_play),
-                                    tint = onPlayPauseColor
-                                )
-                            }
+                    LyricsPlayPauseButton(
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                        useAlbumArtBackground = oneByOneOptimisationActive,
+                        playPauseColor = playPauseColor,
+                        onPlayPauseColor = onPlayPauseColor,
+                        onClick = {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onPlayPause()
                         }
-                    }
+                    )
 
                     // Progress Bar
                     LyricsPlaybackSeekBar(
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp),
+                            .height(lyricsProgressHeight),
                         playbackPositionFlow = playbackPositionFlow,
+                        currentSong = currentSong,
+                        showTrackInfo = oneByOneOptimisationActive,
                         backgroundColor = backgroundColor,
                         onBackgroundColor = onBackgroundColor,
                         accentColor = accentColor,
@@ -1154,8 +1144,90 @@ fun LyricsSheet(
 }
 
 @Composable
+private fun LyricsPlayPauseButton(
+    currentSong: Song?,
+    isPlaying: Boolean,
+    useAlbumArtBackground: Boolean,
+    playPauseColor: Color,
+    onPlayPauseColor: Color,
+    onClick: () -> Unit
+) {
+    val playPauseCornerRadius by animateDpAsState(
+        targetValue = if (isPlaying && !useAlbumArtBackground) 18.dp else 50.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "playPauseShape"
+    )
+    val currentRotation = remember(currentSong?.id) { Animatable(0f) }
+
+    LaunchedEffect(isPlaying, currentSong?.id, useAlbumArtBackground) {
+        if (useAlbumArtBackground && isPlaying) {
+            while (true) {
+                currentRotation.animateTo(
+                    targetValue = currentRotation.value + 360f,
+                    animationSpec = tween(8000, easing = LinearEasing)
+                )
+            }
+        } else {
+            currentRotation.stop()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .size(78.dp)
+            .clip(if (useAlbumArtBackground) CircleShape else RoundedCornerShape(playPauseCornerRadius))
+            .background(playPauseColor)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (useAlbumArtBackground) {
+            SmartImage(
+                model = currentSong?.albumArtUriString ?: R.drawable.rounded_album_24,
+                shape = CircleShape,
+                contentDescription = "Cover Art",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        rotationZ = currentRotation.value % 360f
+                    }
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.34f))
+            )
+        }
+
+        AnimatedContent(
+            targetState = isPlaying,
+            label = "playPauseIconAnimation"
+        ) { playing ->
+            if (playing) {
+                Icon(
+                    modifier = Modifier.size(32.dp),
+                    imageVector = Icons.Rounded.Pause,
+                    contentDescription = "Pause",
+                    tint = onPlayPauseColor
+                )
+            } else {
+                Icon(
+                    modifier = Modifier.size(32.dp),
+                    imageVector = Icons.Rounded.PlayArrow,
+                    contentDescription = stringResource(R.string.cd_play),
+                    tint = onPlayPauseColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun LyricsPlaybackSeekBar(
     playbackPositionFlow: StateFlow<Long>,
+    currentSong: Song?,
+    showTrackInfo: Boolean,
     backgroundColor: Color,
     onBackgroundColor: Color,
     accentColor: Color,
@@ -1166,6 +1238,98 @@ private fun LyricsPlaybackSeekBar(
     modifier: Modifier = Modifier
 ) {
     val playbackPosition by playbackPositionFlow.collectAsStateWithLifecycle()
+
+    if (showTrackInfo && currentSong != null) {
+        val progressFraction = remember(playbackPosition, totalDuration) {
+            if (totalDuration > 0) {
+                (playbackPosition.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+        }
+
+        var isUserSeeking by remember { mutableStateOf(false) }
+        var lastSeekFinishedTime by remember { mutableStateOf(0L) }
+        var targetSeekFraction by remember { mutableFloatStateOf(-1f) }
+        var seekFraction by remember { mutableFloatStateOf(progressFraction) }
+        val lastHapticStep = remember { intArrayOf(-1) }
+        val hapticFeedback = LocalHapticFeedback.current
+
+        LaunchedEffect(progressFraction, isUserSeeking) {
+            if (!isUserSeeking) {
+                val now = System.currentTimeMillis()
+                val timeSinceSeek = now - lastSeekFinishedTime
+                val diffFraction = kotlin.math.abs(progressFraction - targetSeekFraction)
+                if (targetSeekFraction < 0f || timeSinceSeek > 5000L || diffFraction < 0.04f) {
+                    seekFraction = progressFraction
+                    targetSeekFraction = -1f
+                }
+            }
+        }
+
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 8.dp,
+                    shape = CircleShape,
+                    clip = false
+                )
+                .clip(CircleShape)
+                .background(backgroundColor)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            AutoScrollingText(
+                text = "${currentSong.displayArtist} - ${currentSong.title}",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    color = onBackgroundColor,
+                    fontFamily = GoogleSansRounded,
+                    fontSize = 16.sp,
+                    lineHeight = 20.sp
+                ),
+                gradientEdgeColor = backgroundColor,
+                canScroll = isPlaying
+            )
+            WavySliderExpressive(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                value = { seekFraction },
+                onValueChange = { newFraction ->
+                    isUserSeeking = true
+                    seekFraction = newFraction
+                    onSeekPreviewChange((newFraction * totalDuration).roundToLong())
+                    val quantized = (newFraction.coerceIn(0f, 1f) * 20f).toInt()
+                    if (quantized != lastHapticStep[0]) {
+                        lastHapticStep[0] = quantized
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                },
+                onValueCommit = { finalFraction ->
+                    seekFraction = finalFraction
+                    onSeekTo((finalFraction * totalDuration).roundToLong())
+                    onSeekPreviewChange(null)
+                    targetSeekFraction = finalFraction
+                    lastSeekFinishedTime = System.currentTimeMillis()
+                    isUserSeeking = false
+                },
+                strokeWidth = 5.dp,
+                thumbRadius = 8.dp,
+                activeTrackColor = accentColor,
+                inactiveTrackColor = accentColor.copy(alpha = 0.2f),
+                thumbColor = accentColor,
+                wavelength = 30.dp,
+                isPlaying = isPlaying,
+                semanticsLabel = "Playback position"
+            )
+        }
+        return
+    }
 
     PlayerSeekBar(
         backgroundColor = backgroundColor,

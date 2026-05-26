@@ -102,6 +102,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -140,8 +141,9 @@ import com.theveloper.pixelplay.data.model.SortOption
 import com.theveloper.pixelplay.data.model.StorageFilter
 import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
 import com.theveloper.pixelplay.presentation.components.SmartImage
+import com.theveloper.pixelplay.presentation.components.resolveBottomBarHeightForMiniPlayerStack
 import com.theveloper.pixelplay.presentation.components.resolveMainScreenBottomGradientHeight
-import com.theveloper.pixelplay.presentation.components.resolveNavBarOccupiedHeight
+import com.theveloper.pixelplay.presentation.components.shouldUseOneByOneOptimisation
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.asPaddingValues
@@ -462,7 +464,14 @@ fun LibraryScreen(
     val tabTitles by playerViewModel.libraryTabsFlow.collectAsStateWithLifecycle()
     val currentTabId by playerViewModel.currentLibraryTabId.collectAsStateWithLifecycle()
     val libraryNavigationMode by playerViewModel.libraryNavigationMode.collectAsStateWithLifecycle()
+    val oneByOneOptimisation by playerViewModel.oneByOneOptimisation.collectAsStateWithLifecycle()
     val isCompactNavigation = libraryNavigationMode == LibraryNavigationMode.COMPACT_PILL
+    val configuration = LocalConfiguration.current
+    val useOneByOneLibraryOptimisation = shouldUseOneByOneOptimisation(
+        enabled = oneByOneOptimisation,
+        screenWidthDp = configuration.screenWidthDp,
+        screenHeightDp = configuration.screenHeightDp
+    )
     val tabCount = tabTitles.size.coerceAtLeast(1)
     val normalizedLastTabIndex = positiveMod(lastTabIndex, tabCount)
     val compactInitialPage = remember(tabCount, normalizedLastTabIndex) {
@@ -799,8 +808,15 @@ fun LibraryScreen(
 
     val systemNavBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val navBarCompactMode by playerViewModel.navBarCompactMode.collectAsStateWithLifecycle()
-    val bottomBarHeightDp = resolveNavBarOccupiedHeight(systemNavBarInset, navBarCompactMode)
-    val bottomGradientHeight = resolveMainScreenBottomGradientHeight(navBarCompactMode)
+    val bottomBarHeightDp = resolveBottomBarHeightForMiniPlayerStack(
+        systemNavBarInset = systemNavBarInset,
+        compactMode = navBarCompactMode,
+        oneByOneOptimisationActive = useOneByOneLibraryOptimisation
+    )
+    val bottomGradientHeight = resolveMainScreenBottomGradientHeight(
+        compactMode = navBarCompactMode,
+        oneByOneOptimisationActive = useOneByOneLibraryOptimisation
+    )
 
     val dm = LocalPixelPlayDarkTheme.current
 
@@ -836,6 +852,63 @@ fun LibraryScreen(
     val currentTabTitle = currentTab.displayTitle()
 
     val headerContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+    val libraryTabCarousel: @Composable (Dp) -> Unit = { edgePadding ->
+        val showTabIndicator = false
+        PrimaryScrollableTabRow(
+            selectedTabIndex = currentTabIndex,
+            containerColor = Color.Transparent,
+            edgePadding = edgePadding,
+            indicator = {
+                if (showTabIndicator) {
+                    TabRowDefaults.PrimaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(selectedTabIndex = currentTabIndex),
+                        height = 3.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            divider = {}
+        ) {
+            tabTitles.forEachIndexed { index, rawId ->
+                val tabId = rawId.toLibraryTabIdOrNull() ?: LibraryTabId.SONGS
+                TabAnimation(
+                    index = index,
+                    title = tabId.storageKey,
+                    selectedIndex = currentTabIndex,
+                    onClick = {
+                        scope.launch {
+                            pagerState.animateScrollToPage(
+                                targetPageForTabIndex(
+                                    currentPage = pagerState.currentPage,
+                                    targetTabIndex = index,
+                                    tabCount = tabTitles.size,
+                                    compactMode = isCompactNavigation
+                                )
+                            )
+                        }
+                    }
+                ) {
+                    Text(
+                        text = tabId.title,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (currentTabIndex == index) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+            TabAnimation(
+                index = -1,
+                title = stringResource(R.string.presentation_batch_d_edit_library_tabs_cd),
+                selectedIndex = currentTabIndex,
+                onClick = { showReorderTabsSheet = true }
+            ) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = stringResource(R.string.presentation_batch_d_reorder_tabs_cd),
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                )
+            }
+        }
+    }
 
     Scaffold(
         modifier = Modifier.background(brush = gradientBrush),
@@ -845,7 +918,13 @@ fun LibraryScreen(
             ) {
                 TopAppBar(
                     title = {
-                        if (isCompactNavigation) {
+                        if (useOneByOneLibraryOptimisation) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                libraryTabCarousel(0.dp)
+                            }
+                        } else if (isCompactNavigation) {
                             LibraryNavigationPill(
                                 modifier = Modifier,
                                 title = currentTabTitle,
@@ -907,20 +986,22 @@ fun LibraryScreen(
                                 }
                             }
                         }
-                        FilledIconButton(
-                            modifier = Modifier.padding(end = 14.dp),
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            ),
-                            onClick = {
-                                navController.navigateSafely(Screen.Settings.route)
+                        if (!useOneByOneLibraryOptimisation) {
+                            FilledIconButton(
+                                modifier = Modifier.padding(end = 14.dp),
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                onClick = {
+                                    navController.navigateSafely(Screen.Settings.route)
+                                }
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.rounded_settings_24),
+                                    contentDescription = stringResource(R.string.presentation_batch_d_open_settings_cd)
+                                )
                             }
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.rounded_settings_24),
-                                contentDescription = stringResource(R.string.presentation_batch_d_open_settings_cd)
-                            )
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -928,63 +1009,9 @@ fun LibraryScreen(
                         scrolledContainerColor = Color.Transparent
                     )
                 )
-                if (!isCompactNavigation) {
-                    val showTabIndicator = false
-                    PrimaryScrollableTabRow(
-                        selectedTabIndex = currentTabIndex,
-                        containerColor = Color.Transparent,
-                        edgePadding = 12.dp,
-                        indicator = {
-                            if (showTabIndicator) {
-                                TabRowDefaults.PrimaryIndicator(
-                                    modifier = Modifier.tabIndicatorOffset(selectedTabIndex = currentTabIndex),
-                                    height = 3.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        },
-                        divider = {}
-                    ) {
-                        tabTitles.forEachIndexed { index, rawId ->
-                            val tabId = rawId.toLibraryTabIdOrNull() ?: LibraryTabId.SONGS
-                            TabAnimation(
-                                index = index,
-                                title = tabId.storageKey,
-                                selectedIndex = currentTabIndex,
-                                onClick = {
-                                    scope.launch {
-                                        pagerState.animateScrollToPage(
-                                            targetPageForTabIndex(
-                                                currentPage = pagerState.currentPage,
-                                                targetTabIndex = index,
-                                                tabCount = tabTitles.size,
-                                                compactMode = isCompactNavigation
-                                            )
-                                        )
-                                    }
-                                }
-                            ) {
-                                Text(
-                                    text = tabId.title,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = if (currentTabIndex == index) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                        }
-                        TabAnimation(
-                            index = -1,
-                            title = stringResource(R.string.presentation_batch_d_edit_library_tabs_cd),
-                            selectedIndex = currentTabIndex,
-                            onClick = { showReorderTabsSheet = true }
-                        ) {
-                            Icon(
-                                Icons.Default.Edit,
-                                contentDescription = stringResource(R.string.presentation_batch_d_reorder_tabs_cd),
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
-                            )
-                        }
-                    }
-                } else {
+                if (!isCompactNavigation && !useOneByOneLibraryOptimisation) {
+                    libraryTabCarousel(12.dp)
+                } else if (!useOneByOneLibraryOptimisation) {
                     CompactLibraryPagerIndicator(
                         currentIndex = currentTabIndex,
                         pageCount = tabTitles.size,
@@ -1489,7 +1516,8 @@ fun LibraryScreen(
                                             onCheckedChange = { playerViewModel.setHideLocalMedia(it) }
                                         )
                                     }
-                                }
+                                },
+                                oneByOneOptimisationActive = useOneByOneLibraryOptimisation
                             )
                         }
 

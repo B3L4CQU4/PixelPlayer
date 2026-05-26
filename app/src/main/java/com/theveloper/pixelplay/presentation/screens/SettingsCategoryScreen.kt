@@ -552,6 +552,13 @@ fun SettingsCategoryScreen(
                                     onCheckedChange = settingsViewModel::setUseSmoothCorners,
                                     leadingIcon = { Icon(painterResource(R.drawable.rounded_rounded_corner_24), null, tint = MaterialTheme.colorScheme.secondary) }
                                 )
+                                SwitchSettingItem(
+                                    title = stringResource(R.string.setcat_one_by_one_optimisation_title),
+                                    subtitle = stringResource(R.string.setcat_one_by_one_optimisation_subtitle),
+                                    checked = uiState.oneByOneOptimisation,
+                                    onCheckedChange = { settingsViewModel.setOneByOneOptimisation(it) },
+                                    leadingIcon = { Icon(painterResource(R.drawable.rounded_view_week_24), null, tint = MaterialTheme.colorScheme.secondary) }
+                                )
                             }
 
                             SettingsSubsection(title = stringResource(R.string.setcat_now_playing)) {

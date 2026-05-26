@@ -1,6 +1,7 @@
 package com.theveloper.pixelplay.presentation.components.subcomps
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudUpload
@@ -45,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -67,11 +70,15 @@ fun FetchLyricsDialog(
     onPickResult: (LyricsSearchResult) -> Unit,
     onManualSearch: (String, String?) -> Unit,
     onDismiss: () -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    oneByOneOptimisationActive: Boolean = false
 ) {
     if (uiState is LyricsSearchUiState.Success) return
 
     var forcePickResults by rememberSaveable { mutableStateOf(false) }
+    val configuration = LocalConfiguration.current
+    val maxDialogHeight = maxOf(280.dp, configuration.screenHeightDp.dp - 48.dp)
+    val scrollState = rememberScrollState()
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -80,13 +87,29 @@ fun FetchLyricsDialog(
         Surface(
             modifier = Modifier
                 .padding(24.dp)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .then(
+                    if (oneByOneOptimisationActive) {
+                        Modifier.heightIn(max = maxDialogHeight)
+                    } else {
+                        Modifier
+                    }
+                ),
             shape = RoundedCornerShape(32.dp), // Forma muy redondeada (Expressive)
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (oneByOneOptimisationActive) {
+                            Modifier.verticalScroll(scrollState)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 when (uiState) {

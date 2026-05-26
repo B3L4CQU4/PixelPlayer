@@ -109,9 +109,14 @@ fun UnifiedPlayerSheetV2(
     sheetCollapsedTargetY: Float,
     containerHeight: Dp,
     collapsedStateHorizontalPadding: Dp = 12.dp,
+    collapsedStateHorizontalPaddingStart: Dp = collapsedStateHorizontalPadding,
+    collapsedStateHorizontalPaddingEnd: Dp = collapsedStateHorizontalPadding,
     navController: NavHostController,
     hideMiniPlayer: Boolean = false,
-    isNavBarHidden: Boolean = false
+    isNavBarHidden: Boolean = false,
+    miniPlayerArtOnly: Boolean = false,
+    roundCollapsedMiniPlayer: Boolean = miniPlayerArtOnly,
+    collapsedMiniPlayerCornerRadius: Dp = 32.dp
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -357,7 +362,8 @@ fun UnifiedPlayerSheetV2(
 
     val sheetVisualState = rememberSheetVisualState(
         showPlayerContentArea = showPlayerContentArea,
-        collapsedStateHorizontalPadding = collapsedStateHorizontalPadding,
+        collapsedStateHorizontalPaddingStart = collapsedStateHorizontalPaddingStart,
+        collapsedStateHorizontalPaddingEnd = collapsedStateHorizontalPaddingEnd,
         predictiveBackCollapseProgress = predictiveBackCollapseProgress,
         predictiveBackSwipeEdge = predictiveBackSwipeEdge,
         currentSheetContentState = currentSheetContentState,
@@ -370,7 +376,9 @@ fun UnifiedPlayerSheetV2(
         isNavBarHidden = isNavBarHidden,
         isPlaying = infrequentPlayerState.isPlaying,
         hasCurrentSong = infrequentPlayerState.currentSong != null,
-        swipeDismissProgress = swipeDismissProgress
+        swipeDismissProgress = swipeDismissProgress,
+        roundCollapsedMiniPlayer = roundCollapsedMiniPlayer,
+        collapsedMiniPlayerCornerRadius = collapsedMiniPlayerCornerRadius
     )
     val currentBottomPadding = sheetVisualState.currentBottomPadding
     val baseBottomPadding = sheetVisualState.baseBottomPadding
@@ -704,7 +712,8 @@ fun UnifiedPlayerSheetV2(
                             onQueueDragStart = sheetActionHandlers.beginQueueDrag,
                             onQueueDrag = sheetActionHandlers.dragQueueBy,
                             onQueueRelease = sheetActionHandlers.endQueueDrag,
-                            onShowCastClicked = castSheetState.openCastSheet
+                            onShowCastClicked = castSheetState.openCastSheet,
+                            miniPlayerArtOnly = miniPlayerArtOnly
                         )
                     }
                 }

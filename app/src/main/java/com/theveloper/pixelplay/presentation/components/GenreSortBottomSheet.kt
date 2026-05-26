@@ -7,10 +7,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Check
@@ -32,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -46,11 +50,15 @@ fun GenreSortBottomSheet(
     currentSort: SortOption,
     onSortSelected: (SortOption) -> Unit,
     onShuffle: () -> Unit,
-    headerContent: @Composable (() -> Unit)? = null
+    headerContent: @Composable (() -> Unit)? = null,
+    oneByOneOptimisationActive: Boolean = false
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
+    val configuration = LocalConfiguration.current
+    val scrollState = rememberScrollState()
+    val oneByOneSheetMaxHeight = maxOf(280.dp, configuration.screenHeightDp.dp - 48.dp)
     
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -62,6 +70,15 @@ fun GenreSortBottomSheet(
     ) {
         Column(
             modifier = Modifier
+                .then(
+                    if (oneByOneOptimisationActive) {
+                        Modifier
+                            .heightIn(max = oneByOneSheetMaxHeight)
+                            .verticalScroll(scrollState)
+                    } else {
+                        Modifier
+                    }
+                )
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 48.dp) // Extra bottom padding for navigation bar
         ) {
