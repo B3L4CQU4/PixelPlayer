@@ -10,13 +10,13 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshot_1.png" alt="Screenshot 1" width="200" style="border-radius:26px;"/>
-  <img src="assets/screenshot_2.png" alt="Screenshot 2" width="200" style="border-radius:26px;"/>
-  <img src="assets/screenshot_37.png" alt="Screenshot 3" width="200" style="border-radius:26px;"/>
-  <img src="assets/screenshot_4.png" alt="Screenshot 4" width="200" style="border-radius:26px;"/>
-  <img src="assets/screenshot_5.png" alt="Screenshot 5" width="200" style="border-radius:26px;"/>
-  <img src="assets/screenshot_6.png" alt="Screenshot 6" width="200" style="border-radius:26px;"/>
-  <img src="assets/screenshot_7.png" alt="Screenshot 7" width="200" style="border-radius:26px;"/>
+  <img src="assets/Screenshot_1.png" alt="Screenshot 1" width="200" style="border-radius:26px;"/>
+  <img src="assets/Screenshot_2.png" alt="Screenshot 2" width="200" style="border-radius:26px;"/>
+  <img src="assets/Screenshot_37.png" alt="Screenshot 3" width="200" style="border-radius:26px;"/>
+  <img src="assets/Screenshot_4.png" alt="Screenshot 4" width="200" style="border-radius:26px;"/>
+  <img src="assets/Screenshot_5.png" alt="Screenshot 5" width="200" style="border-radius:26px;"/>
+  <img src="assets/Screenshot_6.png" alt="Screenshot 6" width="200" style="border-radius:26px;"/>
+  <img src="assets/Screenshot_7.png" alt="Screenshot 7" width="200" style="border-radius:26px;"/>
 </p>
 
 ---
