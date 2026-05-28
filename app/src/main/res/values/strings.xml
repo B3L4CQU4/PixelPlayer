@@ -235,4 +235,20 @@
     <string name="ui_format_percent_d">%1$d%%</string>
     <string name="backup_manifest_schema_v">v%1$d</string>
     <string name="backup_manifest_device_line">%1$s %2$s</string>
+
+    <!-- Batch Edit -->
+    <string name="batch_edit_toolbar_title">Edit %d Songs</string>
+    <string name="batch_edit_info_message">Only modified fields will be updated. Leave fields empty to keep existing values.</string>
+    <string name="batch_edit_mixed_values">(Mixed values)</string>
+    <string name="batch_edit_optional">(Optional - leave empty to skip)</string>
+    <string name="batch_edit_success">Successfully updated %d songs</string>
+    <string name="batch_edit_partial_success">Updated %d of %d songs. Some files could not be edited.</string>
+    <string name="batch_edit_failed">Failed to update songs</string>
+
+    <!-- Batch Edit Cover Art -->
+    <string name="batch_edit_cover_art_heading">Batch Cover Art</string>
+    <string name="batch_edit_cover_art_hint">This will replace the cover art for all %d selected songs</string>
+    <string name="batch_edit_set_cover_art">Set Cover Art for All</string>
+    <string name="batch_edit_remove_all_art">Remove All Cover Art</string>
+    <string name="batch_edit_multiple_covers">(Multiple different covers)</string>
 </resources>
